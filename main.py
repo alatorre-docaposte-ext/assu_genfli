@@ -3,6 +3,7 @@ from tkinter import ttk
 
 from src.logger import setup_logging, get_logger
 from src.log_window import LogWindow
+from src.prefs_dialog import PrefsDialog
 from src import preferences as prefs_mod
 
 
@@ -26,6 +27,18 @@ def main():
     menubar = tk.Menu(root)
     root.config(menu=menubar)
 
+    # Menu Fichier
+    menu_fichier = tk.Menu(menubar, tearoff=0)
+    menubar.add_cascade(label="Fichier", menu=menu_fichier)
+
+    def open_prefs():
+        PrefsDialog(root, prefs)
+
+    menu_fichier.add_command(label="Préférences", command=open_prefs)
+    menu_fichier.add_separator()
+    menu_fichier.add_command(label="Quitter", command=lambda: root.event_generate("<<AppClose>>"))
+
+    # Menu Affichage
     menu_affichage = tk.Menu(menubar, tearoff=0)
     menubar.add_cascade(label="Affichage", menu=menu_affichage)
 
@@ -69,6 +82,7 @@ def main():
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)
+    root.bind("<<AppClose>>", lambda _e: on_close())
     root.mainloop()
 
 

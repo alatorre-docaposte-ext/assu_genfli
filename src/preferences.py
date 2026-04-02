@@ -12,6 +12,21 @@ APP_NAME = "assu_genfli"
 
 # Valeurs par défaut
 _DEFAULTS: dict = {
+    "general": {
+        "username": "",
+        "work_dir": "",
+        "log_file": "",
+    },
+    "projects": [],   # liste de dicts projet
+    "git": {
+        "ssh_key": "",
+    },
+    "sftp": {
+        "host": "",
+        "port": 22,
+        "username": "",
+        "password": "",   # obfusqué en base64 (non chiffré)
+    },
     "log_window": {
         "visible": False,
         "geometry": "700x350+100+100",
@@ -76,3 +91,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
         else:
             result[k] = v
     return result
+
+
+# Alias public pour import dans d'autres modules
+deep_merge = _deep_merge
