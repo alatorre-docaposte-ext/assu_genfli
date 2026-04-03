@@ -42,26 +42,28 @@ class Wizard:
         parent.rowconfigure(1, weight=1)
 
         # --- En-tête ---
-        self._header_frame = ttk.Frame(parent, relief="flat")
+        self._header_frame = tk.Frame(parent, bg="white")
         self._header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
         self._header_frame.columnconfigure(0, weight=1)
 
         self._title_var = tk.StringVar()
         self._step_var  = tk.StringVar()
 
-        ttk.Label(
+        tk.Label(
             self._header_frame,
             textvariable=self._title_var,
-            font=("Segoe UI", 13, "bold"),
-            padding=(16, 10, 16, 2),
-        ).grid(row=0, column=0, sticky="w")
+            font=("Segoe UI", 11, "bold"),
+            bg="white",
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew", padx=14, pady=(6, 1))
 
-        ttk.Label(
+        tk.Label(
             self._header_frame,
             textvariable=self._step_var,
             foreground="gray",
-            padding=(16, 0, 16, 8),
-        ).grid(row=1, column=0, sticky="w")
+            bg="white",
+            anchor="w",
+        ).grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 5))
 
         ttk.Separator(parent, orient="horizontal").grid(row=0, column=0, sticky="sew", padx=0)
 
@@ -76,8 +78,8 @@ class Wizard:
         footer = ttk.Frame(parent)
         footer.grid(row=3, column=0, sticky="ew", padx=16, pady=8)
 
-        self._btn_prev = ttk.Button(footer, text="◀  Précédent", command=self._go_prev, state="disabled")
-        self._btn_prev.pack(side="left")
+        self._btn_prev = ttk.Button(footer, text="◀  Précédent", command=self._go_prev)
+        # visibilité gérée par _show() — pas de pack ici
 
         self._btn_next = ttk.Button(footer, text="Suivant  ▶", command=self._go_next, state="disabled")
         self._btn_next.pack(side="right")
@@ -96,6 +98,10 @@ class Wizard:
 
     def get_prefs(self) -> dict:
         return self._prefs
+
+    def reload_current(self) -> None:
+        """Recharge l'écran courant (utile après modification des préférences)."""
+        self._show(self._current)
 
     def set_next_enabled(self, enabled: bool) -> None:
         """Appelé par l'écran courant pour activer/désactiver le bouton Suivant."""
@@ -133,8 +139,11 @@ class Wizard:
         self._title_var.set(self._active_screen.title)
         self._step_var.set(f"Étape {index + 1} sur {len(self._steps)}")
 
-        # Boutons de navigation
-        self._btn_prev.config(state="normal" if index > 0 else "disabled")
+        # Boutons de navigation — afficher/masquer Précédent
+        if index > 0:
+            self._btn_prev.pack(side="left")
+        else:
+            self._btn_prev.pack_forget()
         # Suivant : désactivé par défaut, l'écran appelle set_next_enabled()
         last = (index == len(self._steps) - 1)
         self._btn_next.config(

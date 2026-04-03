@@ -30,6 +30,20 @@ _DEFAULTS: dict = {
         "username": "",
         "password": "",   # obfusqué en base64 (non chiffré)
     },
+    "livraison": {
+        "emettrice": {
+            "nom": "",
+            "client": "",
+            "projet": "",
+            "mode": "",
+            "reception_par": "",
+        },
+        "destinataire": {
+            "nom": "",
+            "client": "",
+            "reception_par": "",
+        },
+    },
     "log_window": {
         "visible": False,
         "geometry": "700x350+100+100",

@@ -6,6 +6,7 @@ from src.log_window import LogWindow
 from src.prefs_dialog import PrefsDialog
 from src.wizard import Wizard
 from src.screens.screen1_project import Screen1Project
+from src.screens.screen2_delivery import Screen2Delivery
 from src import preferences as prefs_mod
 
 
@@ -35,7 +36,7 @@ def main():
     menubar.add_cascade(label="Fichier", menu=menu_fichier)
 
     def open_prefs():
-        PrefsDialog(root, prefs)
+        PrefsDialog(root, prefs, on_apply=lambda _p: wizard.reload_current())
 
     menu_fichier.add_command(label="Préférences", command=open_prefs)
     menu_fichier.add_separator()
@@ -64,6 +65,7 @@ def main():
     # --- Wizard ---
     wizard = Wizard(root, prefs)
     wizard.register(Screen1Project)
+    wizard.register(Screen2Delivery)
     wizard.start()
 
     # --- Restaurer état fenêtre de log ---

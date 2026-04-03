@@ -56,6 +56,7 @@ class PrefsDialog:
         self._tab_projets(nb)
         self._tab_git(nb)
         self._tab_sftp(nb)
+        self._tab_livraison(nb)
 
         # Boutons bas de page
         btn_frame = ttk.Frame(win)
@@ -178,6 +179,56 @@ class PrefsDialog:
         self._git_pwd_entry.grid(row=1, column=1, sticky="ew", pady=6)
         self._git_pwd_visible = False
         ttk.Button(https_frame, text="👁", width=3, command=self._toggle_git_pwd).grid(row=1, column=2, padx=(4, 0), pady=6)
+
+    # ------------------------------------------------------------------
+    # Onglet Livraison
+    # ------------------------------------------------------------------
+
+    def _tab_livraison(self, nb: ttk.Notebook) -> None:
+        f = ttk.Frame(nb, padding=15)
+        nb.add(f, text="Livraison")
+        f.columnconfigure(0, weight=1)
+        f.columnconfigure(1, weight=1)
+
+        # --- Entité émettrice ---
+        em = ttk.LabelFrame(f, text="Entité émettrice", padding=10)
+        em.grid(row=0, column=0, sticky="nsew", padx=(0, 6), pady=(0, 10))
+        em.columnconfigure(1, weight=1)
+
+        self._em_nom_var          = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "nom",          default=""))
+        self._em_client_var      = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "client",       default=""))
+        self._em_projet_var      = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "projet",       default=""))
+        self._em_mode_var        = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "mode",         default=""))
+        self._em_reception_var   = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "reception_par", default=""))
+
+        for row, (label, var) in enumerate([
+            ("Nom :",               self._em_nom_var),
+            ("Nom du client :",     self._em_client_var),
+            ("Nom du projet :",     self._em_projet_var),
+            ("Mode de livraison :", self._em_mode_var),
+            ("Livreur par défaut :",self._em_reception_var),
+        ]):
+            ttk.Label(em, text=label, anchor="e").grid(row=row, column=0, sticky="e", padx=(0, 8), pady=4)
+            ttk.Entry(em, textvariable=var).grid(row=row, column=1, sticky="ew", pady=4)
+
+        # --- Entité destinataire ---
+        dest = ttk.LabelFrame(f, text="Entité destinataire", padding=10)
+        dest.grid(row=0, column=1, sticky="nsew", padx=(6, 0), pady=(0, 10))
+        dest.columnconfigure(1, weight=1)
+
+        self._dest_nom_var        = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "destinataire", "nom",          default=""))
+        self._dest_client_var    = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "destinataire", "client",       default=""))
+        self._dest_reception_var = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "destinataire", "reception_par", default=""))
+
+        for row, (label, var) in enumerate([
+            ("Nom :",                self._dest_nom_var),
+            ("Nom du client :",      self._dest_client_var),
+            ("Réception par défaut :", self._dest_reception_var),
+        ]):
+            ttk.Label(dest, text=label, anchor="e").grid(row=row, column=0, sticky="e", padx=(0, 8), pady=4)
+            ttk.Entry(dest, textvariable=var).grid(row=row, column=1, sticky="ew", pady=4)
+
+        # --- (Numérotation FLI supprimée — saisie manuelle à l'écran 2) ---
 
     # ------------------------------------------------------------------
     # Onglet SFTP
@@ -358,6 +409,15 @@ class PrefsDialog:
         self._sftp_port_var.set(str(prefs_mod.get(self._working, "sftp", "port", default=22)))
         self._sftp_user_var.set(prefs_mod.get(self._working, "sftp", "username", default=""))
         self._reload_projects()
+        # Livraison
+        self._em_nom_var.set(prefs_mod.get(self._working,    "livraison", "emettrice",    "nom",    default=""))
+        self._em_client_var.set(prefs_mod.get(self._working, "livraison", "emettrice",    "client", default=""))
+        self._em_projet_var.set(prefs_mod.get(self._working, "livraison", "emettrice",    "projet", default=""))
+        self._em_mode_var.set(prefs_mod.get(self._working,   "livraison", "emettrice",    "mode",   default=""))
+        self._dest_nom_var.set(prefs_mod.get(self._working,        "livraison", "destinataire", "nom",          default=""))
+        self._dest_client_var.set(prefs_mod.get(self._working,    "livraison", "destinataire", "client",       default=""))
+        self._dest_reception_var.set(prefs_mod.get(self._working, "livraison", "destinataire", "reception_par", default=""))
+        self._em_reception_var.set(prefs_mod.get(self._working,   "livraison", "emettrice",    "reception_par", default=""))
         messagebox.showinfo("Import", "Paramètres importés. Validez avec OK ou Appliquer.", parent=self._win)
 
     # ------------------------------------------------------------------
@@ -379,6 +439,16 @@ class PrefsDialog:
             port = max(1, min(65535, int(self._sftp_port_var.get())))
         except ValueError:
             port = 22
+        prefs_mod.set_(self._working, "sftp", "port", value=port)
+        # Livraison
+        prefs_mod.set_(self._working, "livraison", "emettrice",    "nom",    value=self._em_nom_var.get())
+        prefs_mod.set_(self._working, "livraison", "emettrice",    "client", value=self._em_client_var.get())
+        prefs_mod.set_(self._working, "livraison", "emettrice",    "projet", value=self._em_projet_var.get())
+        prefs_mod.set_(self._working, "livraison", "emettrice",    "mode",   value=self._em_mode_var.get())
+        prefs_mod.set_(self._working, "livraison", "destinataire", "nom",          value=self._dest_nom_var.get())
+        prefs_mod.set_(self._working, "livraison", "destinataire", "client",       value=self._dest_client_var.get())
+        prefs_mod.set_(self._working, "livraison", "destinataire", "reception_par", value=self._dest_reception_var.get())
+        prefs_mod.set_(self._working, "livraison", "emettrice",    "reception_par", value=self._em_reception_var.get())
         prefs_mod.set_(self._working, "sftp", "port", value=port)
 
     def _apply(self) -> None:

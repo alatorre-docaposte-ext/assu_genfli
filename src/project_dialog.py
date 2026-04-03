@@ -14,6 +14,7 @@ from tkinter import ttk, filedialog, messagebox
 _FIELDS = [
     ("name",              "Nom :",                "Alias du projet",                 False),
     ("code",              "Code :",               "Code du projet (ex: SGK)",         False),
+    ("dest_projet",       "Projet destinataire :","Nom du projet côté destinataire",  False),
     ("depot_wfd_local",   "Dépôt WFD local :",    "/chemin/du/dépôt/WFD",            True),
     ("depot_wfd_distant", "Dépôt WFD distant :",  "https://github.com/org/wfd.git",   False),
     ("depot_ress_local",  "Dépôt RESS local :",   "/chemin/du/dépôt/RESS",           True),
