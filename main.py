@@ -4,6 +4,8 @@ from tkinter import ttk
 from src.logger import setup_logging, get_logger
 from src.log_window import LogWindow
 from src.prefs_dialog import PrefsDialog
+from src.wizard import Wizard
+from src.screens.screen1_project import Screen1Project
 from src import preferences as prefs_mod
 
 
@@ -16,7 +18,8 @@ def main():
     # --- Fenêtre principale ---
     root = tk.Tk()
     root.title("assu_genfli")
-    root.minsize(500, 300)
+    root.minsize(640, 480)
+    root.geometry("800x560")
 
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=1)
@@ -58,14 +61,10 @@ def main():
     # Synchronise la coche si la fenêtre est fermée via sa propre croix/bouton
     log_window.set_on_visibility_change(lambda visible: log_visible_var.set(visible))
 
-    # --- Contenu principal (placeholder Hello World) ---
-    frame = ttk.LabelFrame(root, padding=20)
-    frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
-    frame.columnconfigure(0, weight=1)
-    frame.rowconfigure(0, weight=1)
-
-    label = ttk.Label(frame, text="Hello World", font=("Segoe UI", 18, "bold"))
-    label.grid(row=0, column=0)
+    # --- Wizard ---
+    wizard = Wizard(root, prefs)
+    wizard.register(Screen1Project)
+    wizard.start()
 
     # --- Restaurer état fenêtre de log ---
     log_window.restore_from_prefs()
