@@ -150,12 +150,34 @@ class PrefsDialog:
         nb.add(f, text="Git")
         f.columnconfigure(1, weight=1)
 
-        ttk.Label(f, text="Clé SSH :").grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
+        # --- Fieldset SSH ---
+        ssh_frame = ttk.LabelFrame(f, text="SSH", padding=8)
+        ssh_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
+        ssh_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(ssh_frame, text="Clé SSH :", anchor="e").grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
         self._ssh_key_var = tk.StringVar(value=prefs_mod.get(self._working, "git", "ssh_key", default=""))
-        ttk.Entry(f, textvariable=self._ssh_key_var).grid(row=0, column=1, sticky="ew", pady=6)
-        ttk.Button(f, text="Browse...", command=lambda: self._browse_open(
+        ttk.Entry(ssh_frame, textvariable=self._ssh_key_var).grid(row=0, column=1, sticky="ew", pady=6)
+        ttk.Button(ssh_frame, text="Browse...", command=lambda: self._browse_open(
             self._ssh_key_var, [("Clés SSH", "*.pem *.key id_rsa id_ed25519"), ("Tous", "*.*")]
         )).grid(row=0, column=2, padx=(4, 0), pady=6)
+
+        # --- Fieldset HTTPS ---
+        https_frame = ttk.LabelFrame(f, text="HTTPS", padding=8)
+        https_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        https_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(https_frame, text="Login :", anchor="e").grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
+        self._git_https_login_var = tk.StringVar(value=prefs_mod.get(self._working, "git", "https_login", default=""))
+        ttk.Entry(https_frame, textvariable=self._git_https_login_var).grid(row=0, column=1, columnspan=2, sticky="ew", pady=6)
+
+        ttk.Label(https_frame, text="Mot de passe :", anchor="e").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
+        git_pwd_encoded = prefs_mod.get(self._working, "git", "https_password", default="")
+        self._git_https_pwd_var = tk.StringVar(value=_decode_password(git_pwd_encoded))
+        self._git_pwd_entry = ttk.Entry(https_frame, textvariable=self._git_https_pwd_var, show="●")
+        self._git_pwd_entry.grid(row=1, column=1, sticky="ew", pady=6)
+        self._git_pwd_visible = False
+        ttk.Button(https_frame, text="👁", width=3, command=self._toggle_git_pwd).grid(row=1, column=2, padx=(4, 0), pady=6)
 
     # ------------------------------------------------------------------
     # Onglet SFTP
@@ -206,7 +228,8 @@ class PrefsDialog:
         self._btn_supprimer.config(state=state)
 
     def _add_project(self) -> None:
-        dlg = ProjectDialog(self._win, title="Nouveau projet")
+        default_method = prefs_mod.get(self._working, "git", "conn_method", default="SSH")
+        dlg = ProjectDialog(self._win, title="Nouveau projet", default_conn_method=default_method)
         if dlg.result:
             projects = prefs_mod.get(self._working, "projects", default=[])
             projects.append(dlg.result)
@@ -219,7 +242,8 @@ class PrefsDialog:
             return
         idx = self._proj_tree.index(sel[0])
         projects = prefs_mod.get(self._working, "projects", default=[])
-        dlg = ProjectDialog(self._win, title="Modifier le projet", data=projects[idx])
+        default_method = prefs_mod.get(self._working, "git", "conn_method", default="SSH")
+        dlg = ProjectDialog(self._win, title="Modifier le projet", data=projects[idx], default_conn_method=default_method)
         if dlg.result:
             projects[idx] = dlg.result
             prefs_mod.set_(self._working, "projects", value=projects)
@@ -238,8 +262,12 @@ class PrefsDialog:
             self._reload_projects()
 
     # ------------------------------------------------------------------
-    # SFTP
+    # Git / SFTP — toggle mots de passe
     # ------------------------------------------------------------------
+
+    def _toggle_git_pwd(self) -> None:
+        self._git_pwd_visible = not self._git_pwd_visible
+        self._git_pwd_entry.config(show="" if self._git_pwd_visible else "●")
 
     def _toggle_pwd(self) -> None:
         self._pwd_visible = not self._pwd_visible
@@ -290,7 +318,8 @@ class PrefsDialog:
         if not path:
             return
         export = copy.deepcopy(self._working)
-        prefs_mod.set_(export, "sftp", "password", value="")   # ne pas exporter le mot de passe
+        prefs_mod.set_(export, "sftp", "password",        value="")  # ne pas exporter les mots de passe
+        prefs_mod.set_(export, "git",  "https_password",  value="")
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 json.dump(export, fh, indent=2, ensure_ascii=False)
@@ -323,6 +352,8 @@ class PrefsDialog:
         self._workdir_var.set(prefs_mod.get(self._working, "general", "work_dir", default=""))
         self._logfile_var.set(prefs_mod.get(self._working, "general", "log_file", default=""))
         self._ssh_key_var.set(prefs_mod.get(self._working, "git", "ssh_key", default=""))
+        self._git_https_login_var.set(prefs_mod.get(self._working, "git", "https_login", default=""))
+        self._git_https_pwd_var.set(_decode_password(prefs_mod.get(self._working, "git", "https_password", default="")))
         self._sftp_host_var.set(prefs_mod.get(self._working, "sftp", "host", default=""))
         self._sftp_port_var.set(str(prefs_mod.get(self._working, "sftp", "port", default=22)))
         self._sftp_user_var.set(prefs_mod.get(self._working, "sftp", "username", default=""))
@@ -338,7 +369,9 @@ class PrefsDialog:
         prefs_mod.set_(self._working, "general", "username", value=self._username_var.get())
         prefs_mod.set_(self._working, "general", "work_dir", value=self._workdir_var.get())
         prefs_mod.set_(self._working, "general", "log_file", value=self._logfile_var.get())
-        prefs_mod.set_(self._working, "git", "ssh_key", value=self._ssh_key_var.get())
+        prefs_mod.set_(self._working, "git", "ssh_key",        value=self._ssh_key_var.get())
+        prefs_mod.set_(self._working, "git", "https_login",    value=self._git_https_login_var.get())
+        prefs_mod.set_(self._working, "git", "https_password", value=_encode_password(self._git_https_pwd_var.get()))
         prefs_mod.set_(self._working, "sftp", "host",     value=self._sftp_host_var.get())
         prefs_mod.set_(self._working, "sftp", "username", value=self._sftp_user_var.get())
         prefs_mod.set_(self._working, "sftp", "password", value=_encode_password(self._sftp_pwd_var.get()))

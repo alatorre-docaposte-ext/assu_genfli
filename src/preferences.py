@@ -20,6 +20,9 @@ _DEFAULTS: dict = {
     "projects": [],   # liste de dicts projet
     "git": {
         "ssh_key": "",
+        "https_login": "",
+        "https_password": "",
+        "conn_method": "SSH",
     },
     "sftp": {
         "host": "",

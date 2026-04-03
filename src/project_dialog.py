@@ -1,7 +1,8 @@
 """
 project_dialog.py — Boîte de dialogue création/modification d'un projet.
 
-Champs : Nom, Code, Dépôt WFD, Dépôt RESS, Dépôt DEV, Répertoire, Dépôt distant.
+Champs : Nom, Code, Dépôt WFD, Dépôt RESS, Dépôt DEV, Répertoire, Dépôt distant,
+         Méthode de connexion (SSH / HTTPS — les credentials sont dans Préférences -> Git).
 Retourne le dict projet dans self.result (None si Annuler).
 """
 
@@ -11,13 +12,13 @@ from tkinter import ttk, filedialog, messagebox
 
 # Définition des champs : (clé, libellé, placeholder, browse_dir?)
 _FIELDS = [
-    ("name",          "Nom :",           "Alias du projet",                 False),
-    ("code",          "Code :",          "Code du projet (ex: SGK)",         False),
-    ("depot_wfd",     "Dépôt WFD :",     "/chemin/du/dépôt/WFD",            True),
-    ("depot_ress",    "Dépôt RESS :",    "/chemin/du/dépôt/RESS",           True),
-    ("depot_dev",     "Dépôt DEV :",     "/chemin/du/dépôt/DEV",            True),
-    ("repertoire",    "Répertoire :",    "/chemin/local/du/dépôt",           True),
-    ("depot_distant", "Dépôt distant :", "https://github.com/org/repo.git",  False),
+    ("name",              "Nom :",                "Alias du projet",                 False),
+    ("code",              "Code :",               "Code du projet (ex: SGK)",         False),
+    ("depot_wfd_local",   "Dépôt WFD local :",    "/chemin/du/dépôt/WFD",            True),
+    ("depot_wfd_distant", "Dépôt WFD distant :",  "https://github.com/org/wfd.git",   False),
+    ("depot_ress_local",  "Dépôt RESS local :",   "/chemin/du/dépôt/RESS",           True),
+    ("depot_ress_distant","Dépôt RESS distant :",  "https://github.com/org/ress.git",  False),
+    ("depot_dev",         "Dépôt DEV :",          "/chemin/du/dépôt/DEV",            True),
 ]
 
 
@@ -29,10 +30,18 @@ class ProjectDialog:
             ...  # dict avec les champs du projet
     """
 
-    def __init__(self, parent: tk.Toplevel, title: str = "Projet", data: dict | None = None) -> None:
+    def __init__(
+        self,
+        parent: tk.Toplevel,
+        title: str = "Projet",
+        data: dict | None = None,
+        default_conn_method: str = "SSH",
+    ) -> None:
         self.result: dict | None = None
         self._data = data or {}
         self._entries: dict[str, ttk.Entry] = {}
+        self._default_conn_method = default_conn_method
+        self._conn_method_var: tk.StringVar | None = None
 
         self._win = tk.Toplevel(parent)
         self._win.title(title)
@@ -80,10 +89,28 @@ class ProjectDialog:
                     command=lambda ent=entry: self._browse_dir(ent),
                 ).grid(row=row, column=2, padx=(0, 10), pady=5)
 
+        # --- Méthode de connexion (credentials dans Préférences -> Git) ---
+        next_row = len(_FIELDS)
+        ttk.Label(win, text="Connexion :", width=15, anchor="e").grid(
+            row=next_row, column=0, sticky="e", padx=(10, 4), pady=5
+        )
+        # Priorité : valeur sauvegardée du projet, sinon méthode par défaut (Git prefs)
+        current_method = self._data.get("conn_method", self._default_conn_method)
+        self._conn_method_var = tk.StringVar(value=current_method)
+        ttk.Combobox(
+            win, textvariable=self._conn_method_var,
+            values=["SSH", "HTTPS"], state="readonly", width=10,
+        ).grid(row=next_row, column=1, sticky="w", padx=(0, 10), pady=5)
+        ttk.Label(
+            win,
+            text="(credentials configurés dans Préférences → Git)",
+            foreground="gray",
+        ).grid(row=next_row, column=2, sticky="w", padx=(0, 10), pady=5)
+
         # Boutons
         btn_frame = ttk.Frame(win)
         btn_frame.grid(
-            row=len(_FIELDS), column=0, columnspan=3,
+            row=next_row + 1, column=0, columnspan=3,
             sticky="e", padx=10, pady=(8, 10),
         )
         ttk.Button(btn_frame, text="OK",      width=10, command=self._ok).pack(side="left", padx=4)
@@ -124,6 +151,8 @@ class ProjectDialog:
         if not result.get("name"):
             messagebox.showwarning("Champ requis", "Le nom du projet est obligatoire.", parent=self._win)
             return
+
+        result["conn_method"] = self._conn_method_var.get() if self._conn_method_var else "SSH"
 
         self.result = result
         self._win.destroy()
