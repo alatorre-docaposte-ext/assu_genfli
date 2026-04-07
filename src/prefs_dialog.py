@@ -37,7 +37,13 @@ class PrefsDialog:
         self._win.transient(parent)
         self._win.minsize(550, 0)
 
+        # Restaurer la geometry sauvegardée
+        saved_geom = prefs_mod.get(self._prefs, "prefs_dialog", "geometry", default="")
+        if saved_geom:
+            self._win.geometry(saved_geom)
+
         self._build()
+        self._win.protocol("WM_DELETE_WINDOW", self._on_close)
         self._win.wait_window()
 
     # ------------------------------------------------------------------
@@ -62,7 +68,7 @@ class PrefsDialog:
         btn_frame = ttk.Frame(win)
         btn_frame.grid(row=1, column=0, sticky="e", padx=10, pady=(0, 10))
         ttk.Button(btn_frame, text="OK",       width=10, command=self._ok).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Annuler",  width=10, command=self._win.destroy).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Annuler",  width=10, command=self._on_close).pack(side="left", padx=4)
         ttk.Button(btn_frame, text="Appliquer",width=10, command=self._apply).pack(side="left", padx=4)
 
     # ------------------------------------------------------------------
@@ -280,7 +286,7 @@ class PrefsDialog:
 
     def _add_project(self) -> None:
         default_method = prefs_mod.get(self._working, "git", "conn_method", default="SSH")
-        dlg = ProjectDialog(self._win, title="Nouveau projet", default_conn_method=default_method)
+        dlg = ProjectDialog(self._win, title="Nouveau projet", default_conn_method=default_method, prefs=self._prefs)
         if dlg.result:
             projects = prefs_mod.get(self._working, "projects", default=[])
             projects.append(dlg.result)
@@ -294,7 +300,7 @@ class PrefsDialog:
         idx = self._proj_tree.index(sel[0])
         projects = prefs_mod.get(self._working, "projects", default=[])
         default_method = prefs_mod.get(self._working, "git", "conn_method", default="SSH")
-        dlg = ProjectDialog(self._win, title="Modifier le projet", data=projects[idx], default_conn_method=default_method)
+        dlg = ProjectDialog(self._win, title="Modifier le projet", data=projects[idx], default_conn_method=default_method, prefs=self._prefs)
         if dlg.result:
             projects[idx] = dlg.result
             prefs_mod.set_(self._working, "projects", value=projects)
@@ -459,9 +465,15 @@ class PrefsDialog:
         if self._on_apply:
             self._on_apply(self._prefs)
 
+    def _on_close(self) -> None:
+        """Sauvegarde la geometry puis ferme."""
+        prefs_mod.set_(self._prefs, "prefs_dialog", "geometry", value=self._win.geometry())
+        prefs_mod.save(self._prefs)
+        self._win.destroy()
+
     def _ok(self) -> None:
         self._apply()
-        self._win.destroy()
+        self._on_close()
 
 
 # ------------------------------------------------------------------

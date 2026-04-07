@@ -39,11 +39,16 @@ class Wizard:
     def _build(self) -> None:
         parent = self._parent
         parent.columnconfigure(0, weight=1)
-        parent.rowconfigure(1, weight=1)
+        parent.rowconfigure(0, weight=0)  # header — taille fixe
+        parent.rowconfigure(1, weight=0)  # séparateur
+        parent.rowconfigure(2, weight=1)  # contenu — tout l'espace restant
+        parent.rowconfigure(3, weight=0)  # séparateur
+        parent.rowconfigure(4, weight=0)  # footer
 
-        # --- En-tête ---
-        self._header_frame = tk.Frame(parent, bg="white")
-        self._header_frame.grid(row=0, column=0, sticky="ew", padx=0, pady=0)
+        # --- En-tête (hauteur fixe 60px) ---
+        self._header_frame = tk.Frame(parent, bg="white", height=80)
+        self._header_frame.grid(row=0, column=0, sticky="ew")
+        self._header_frame.grid_propagate(False)  # force la hauteur à 60px
         self._header_frame.columnconfigure(0, weight=1)
 
         self._title_var = tk.StringVar()
@@ -55,7 +60,7 @@ class Wizard:
             font=("Segoe UI", 11, "bold"),
             bg="white",
             anchor="w",
-        ).grid(row=0, column=0, sticky="ew", padx=14, pady=(6, 1))
+        ).grid(row=0, column=0, sticky="ew", padx=14, pady=(10, 0))
 
         tk.Label(
             self._header_frame,
@@ -63,20 +68,21 @@ class Wizard:
             foreground="gray",
             bg="white",
             anchor="w",
-        ).grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 5))
+        ).grid(row=1, column=0, sticky="ew", padx=14, pady=(2, 0))
 
-        ttk.Separator(parent, orient="horizontal").grid(row=0, column=0, sticky="sew", padx=0)
+        # --- Séparateur (row dédiée) ---
+        ttk.Separator(parent, orient="horizontal").grid(row=1, column=0, sticky="ew")
 
         # --- Zone contenu ---
         self._content = ttk.Frame(parent)
-        self._content.grid(row=1, column=0, sticky="nsew", padx=16, pady=10)
+        self._content.grid(row=2, column=0, sticky="nsew", padx=16, pady=(8, 0))
         self._content.columnconfigure(0, weight=1)
         self._content.rowconfigure(0, weight=1)
 
-        # --- Pied de page ---
-        ttk.Separator(parent, orient="horizontal").grid(row=2, column=0, sticky="new")
+        # --- Séparateur + Pied de page ---
+        ttk.Separator(parent, orient="horizontal").grid(row=3, column=0, sticky="ew")
         footer = ttk.Frame(parent)
-        footer.grid(row=3, column=0, sticky="ew", padx=16, pady=8)
+        footer.grid(row=4, column=0, sticky="ew", padx=16, pady=8)
 
         self._btn_prev = ttk.Button(footer, text="◀  Précédent", command=self._go_prev)
         # visibilité gérée par _show() — pas de pack ici

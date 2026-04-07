@@ -48,6 +48,15 @@ _DEFAULTS: dict = {
         "visible": False,
         "geometry": "700x350+100+100",
     },
+    "main_window": {
+        "geometry": "800x560",
+    },
+    "prefs_dialog": {
+        "geometry": "",
+    },
+    "project_dialog": {
+        "geometry": "",
+    },
 }
 
 

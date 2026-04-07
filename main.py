@@ -20,7 +20,7 @@ def main():
     root = tk.Tk()
     root.title("assu_genfli")
     root.minsize(640, 480)
-    root.geometry("800x560")
+    root.geometry(prefs_mod.get(prefs, "main_window", "geometry", default="800x560"))
 
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=1)
@@ -76,6 +76,7 @@ def main():
     # --- Fermeture propre ---
     def on_close():
         log.info("Application fermée.")
+        prefs_mod.set_(prefs, "main_window", "geometry", value=root.geometry())
         prefs_mod.set_(prefs, "log_window", "visible", value=log_window.is_visible())
         if log_window.is_visible():
             log_window._save_geometry()

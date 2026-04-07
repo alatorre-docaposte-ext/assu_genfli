@@ -10,6 +10,8 @@ import os
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+from src import preferences as prefs_mod
+
 # Définition des champs : (clé, libellé, placeholder, browse_dir?)
 _FIELDS = [
     ("name",              "Nom :",                "Alias du projet",                 False),
@@ -37,12 +39,14 @@ class ProjectDialog:
         title: str = "Projet",
         data: dict | None = None,
         default_conn_method: str = "SSH",
+        prefs: dict | None = None,
     ) -> None:
         self.result: dict | None = None
         self._data = data or {}
         self._entries: dict[str, ttk.Entry] = {}
         self._default_conn_method = default_conn_method
         self._conn_method_var: tk.StringVar | None = None
+        self._prefs = prefs
 
         self._win = tk.Toplevel(parent)
         self._win.title(title)
@@ -50,7 +54,17 @@ class ProjectDialog:
         self._win.grab_set()
         self._win.transient(parent)
 
+        # Restaurer la position sauvegardée
+        if self._prefs is not None:
+            saved_geom = prefs_mod.get(self._prefs, "project_dialog", "geometry", default="")
+            if saved_geom:
+                # Ne restaurer que la position (+X+Y), pas la taille (fenêtre fixe)
+                parts = saved_geom.split("+", 1)
+                if len(parts) == 2:
+                    self._win.geometry("+" + parts[1])
+
         self._build()
+        self._win.protocol("WM_DELETE_WINDOW", self._on_close)
         self._win.wait_window()
 
     # ------------------------------------------------------------------
@@ -115,7 +129,17 @@ class ProjectDialog:
             sticky="e", padx=10, pady=(8, 10),
         )
         ttk.Button(btn_frame, text="OK",      width=10, command=self._ok).pack(side="left", padx=4)
-        ttk.Button(btn_frame, text="Annuler", width=10, command=self._win.destroy).pack(side="left", padx=4)
+        ttk.Button(btn_frame, text="Annuler", width=10, command=self._on_close).pack(side="left", padx=4)
+
+    # ------------------------------------------------------------------
+
+    def _save_geometry(self) -> None:
+        if self._prefs is not None:
+            prefs_mod.set_(self._prefs, "project_dialog", "geometry", value=self._win.geometry())
+
+    def _on_close(self) -> None:
+        self._save_geometry()
+        self._win.destroy()
 
     # ------------------------------------------------------------------
 
@@ -156,4 +180,5 @@ class ProjectDialog:
         result["conn_method"] = self._conn_method_var.get() if self._conn_method_var else "SSH"
 
         self.result = result
+        self._save_geometry()
         self._win.destroy()
