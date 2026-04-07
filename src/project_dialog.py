@@ -14,14 +14,15 @@ from src import preferences as prefs_mod
 
 # Définition des champs : (clé, libellé, placeholder, browse_dir?)
 _FIELDS = [
-    ("name",              "Nom :",                "Alias du projet",                 False),
-    ("code",              "Code :",               "Code du projet (ex: SGK)",         False),
-    ("dest_projet",       "Projet destinataire :","Nom du projet côté destinataire",  False),
-    ("depot_wfd_local",   "Dépôt WFD local :",    "/chemin/du/dépôt/WFD",            True),
-    ("depot_wfd_distant", "Dépôt WFD distant :",  "https://github.com/org/wfd.git",   False),
-    ("depot_ress_local",  "Dépôt RESS local :",   "/chemin/du/dépôt/RESS",           True),
-    ("depot_ress_distant","Dépôt RESS distant :",  "https://github.com/org/ress.git",  False),
-    ("depot_dev",         "Dépôt DEV :",          "/chemin/du/dépôt/DEV",            True),
+    ("name",               "Nom :",                "Alias du projet",                 False),
+    ("code",               "Code :",               "Code du projet (ex: SGK)",         False),
+    ("dest_projet",        "Projet destinataire :","Nom du projet côté destinataire",  False),
+    ("depot_wfd_local",    "Dépôt WFD local :",    "/chemin/du/dépôt/WFD",            True),
+    ("depot_wfd_distant",  "Dépôt WFD distant :",  "https://github.com/org/wfd.git",   False),
+    ("depot_ress_local",   "Dépôt RESS local :",   "/chemin/du/dépôt/RESS",           True),
+    ("depot_ress_distant", "Dépôt RESS distant :",  "https://github.com/org/ress.git",  False),
+    ("depot_dev",          "Dépôt DEV local :",    "/chemin/du/dépôt/DEV",            True),
+    ("depot_dev_distant",  "Dépôt DEV distant :",  "https://github.com/org/dev.git",   False),
 ]
 
 

@@ -105,7 +105,10 @@ class Screen2Delivery:
             prefs_mod.get(self._prefs, "livraison", "emettrice", "reception_par", default="")
             or prefs_mod.get(self._prefs, "general", "username", default="")
         )
-        session_livreur = prefs_mod.get(self._prefs, "session", "delivery", "livreur", default=default_livreur)
+        session_livreur = (
+            prefs_mod.get(self._prefs, "session", "delivery", "livreur", default="")
+            or default_livreur
+        )
         self._livreur_var = tk.StringVar(value=session_livreur)
         ttk.Entry(f, textvariable=self._livreur_var).grid(row=5, column=1, sticky="ew", pady=4)
 
@@ -139,7 +142,10 @@ class Screen2Delivery:
         ttk.Separator(f, orient="horizontal").grid(row=3, column=0, columnspan=2, sticky="ew", pady=8)
         ttk.Label(f, text="Réception par :").grid(row=4, column=0, sticky="e", padx=(0, 6), pady=4)
         default_recep = prefs_mod.get(self._prefs, "livraison", "destinataire", "reception_par", default="")
-        session_recep = prefs_mod.get(self._prefs, "session", "delivery", "reception_par", default=default_recep)
+        session_recep = (
+            prefs_mod.get(self._prefs, "session", "delivery", "reception_par", default="")
+            or default_recep
+        )
         self._reception_var = tk.StringVar(value=session_recep)
         ttk.Entry(f, textvariable=self._reception_var).grid(row=4, column=1, sticky="ew", pady=4)
 

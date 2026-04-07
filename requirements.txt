@@ -1,2 +1,3 @@
 # tkinter est inclus dans la bibliothèque standard Python — pas de dépendance externe
 pyinstaller>=6.0.0
+gitpython>=3.1

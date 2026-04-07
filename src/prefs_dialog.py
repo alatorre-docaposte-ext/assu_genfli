@@ -14,6 +14,7 @@ from tkinter import ttk, filedialog, messagebox
 
 from src import preferences as prefs_mod
 from src.project_dialog import ProjectDialog
+from src.git_sync_dialog import GitSyncDialog
 
 
 class PrefsDialog:
@@ -292,6 +293,7 @@ class PrefsDialog:
             projects.append(dlg.result)
             prefs_mod.set_(self._working, "projects", value=projects)
             self._reload_projects()
+            GitSyncDialog(self._win, dlg.result, self._working)
 
     def _edit_project(self) -> None:
         sel = self._proj_tree.selection()
@@ -305,6 +307,7 @@ class PrefsDialog:
             projects[idx] = dlg.result
             prefs_mod.set_(self._working, "projects", value=projects)
             self._reload_projects()
+            GitSyncDialog(self._win, dlg.result, self._working)
 
     def _delete_project(self) -> None:
         sel = self._proj_tree.selection()
