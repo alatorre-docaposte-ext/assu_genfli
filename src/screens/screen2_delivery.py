@@ -217,12 +217,12 @@ class Screen2Delivery:
 
         ttk.Label(chk_frame, text="Livraison en environnement d'intégration").pack(anchor="w", pady=(0, 4))
 
-        session_quadient = prefs_mod.get(self._prefs, "session", "delivery", "quadient_r15", default=False)
+        session_quadient = prefs_mod.get(self._prefs, "session", "delivery", "quadient_r15", default=True)
         self._quadient_r15_var = tk.BooleanVar(value=session_quadient)
         ttk.Checkbutton(
             chk_frame,
             text="Livraison d'éléments Quadient R15",
-            variable=self._quadient_r15_var,
+            variable=self._quadient_r15_var
         ).pack(anchor="w", pady=2)
 
         self._update_fli_title()
