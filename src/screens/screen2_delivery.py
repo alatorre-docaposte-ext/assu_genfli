@@ -20,9 +20,12 @@ Layout (fidèle à la maquette step2.png) :
 """
 
 import datetime
+import queue
+import threading
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from src import git_ops
 from src import preferences as prefs_mod
 from src.logger import get_logger
 from src.widgets import DateEntry
@@ -36,6 +39,7 @@ class Screen2Delivery:
     def __init__(self, parent: ttk.Frame, wizard) -> None:
         self._wizard = wizard
         self._prefs  = wizard.get_prefs()
+        self._tag_queue: queue.Queue = queue.Queue()
 
         self.frame = ttk.Frame(parent)
         self.frame.columnconfigure(0, weight=1)
@@ -204,10 +208,20 @@ class Screen2Delivery:
         self._tag_ress_var = tk.StringVar(value=session_tag_ress)
 
         ttk.Label(right, text="WFD maîtres :").grid(row=0, column=0, sticky="e", padx=(0, 8), pady=6)
-        ttk.Entry(right, textvariable=self._tag_wfd_var).grid(row=0, column=1, sticky="ew", pady=6)
+        self._combo_wfd = ttk.Combobox(right, textvariable=self._tag_wfd_var, state="normal", width=22)
+        self._combo_wfd.grid(row=0, column=1, sticky="ew", pady=6)
+        self._combo_wfd.bind("<KeyRelease>", lambda e: self._filter_combo(self._combo_wfd, self._tag_wfd_var, "_tags_wfd"))
 
         ttk.Label(right, text="Ressources :").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
-        ttk.Entry(right, textvariable=self._tag_ress_var).grid(row=1, column=1, sticky="ew", pady=6)
+        self._combo_ress = ttk.Combobox(right, textvariable=self._tag_ress_var, state="normal", width=22)
+        self._combo_ress.grid(row=1, column=1, sticky="ew", pady=6)
+        self._combo_ress.bind("<KeyRelease>", lambda e: self._filter_combo(self._combo_ress, self._tag_ress_var, "_tags_ress"))
+
+        self._tags_wfd:  list[str] = []
+        self._tags_ress: list[str] = []
+
+        # Charge les tags en arrière-plan
+        self._start_tag_loading()
 
         # --- Checkboxes ---
         chk_frame = ttk.Frame(f)
@@ -224,6 +238,59 @@ class Screen2Delivery:
         ).pack(anchor="w", pady=2)
 
         self._update_fli_title()
+
+    # ------------------------------------------------------------------
+    # Chargement asynchrone des tags
+    # ------------------------------------------------------------------
+
+    def _start_tag_loading(self) -> None:
+        project = prefs_mod.get(self._prefs, "session", "selected_project", default={})
+        wfd_path  = project.get("depot_wfd_local",  "")
+        ress_path = project.get("depot_ress_local", "")
+
+        def run() -> None:
+            if wfd_path:
+                all_tags  = git_ops.get_tags(wfd_path)
+                beta1_tag = git_ops.get_latest_beta1_tag(wfd_path)
+                self._tag_queue.put(("wfd", all_tags, beta1_tag))
+            if ress_path:
+                all_tags  = git_ops.get_tags(ress_path)
+                beta1_tag = git_ops.get_latest_beta1_tag(ress_path)
+                self._tag_queue.put(("ress", all_tags, beta1_tag))
+            self._tag_queue.put(("done", None, None))
+
+        threading.Thread(target=run, daemon=True).start()
+        self._poll_tags()
+
+    def _poll_tags(self) -> None:
+        try:
+            while True:
+                kind, tags, beta1_tag = self._tag_queue.get_nowait()
+                if kind == "wfd" and tags:
+                    self._tags_wfd = tags
+                    self._combo_wfd["values"] = tags
+                    # Pré-remplir avec le dernier *-beta1 si le champ est vide
+                    if not self._tag_wfd_var.get() and beta1_tag:
+                        self._tag_wfd_var.set(beta1_tag)
+                elif kind == "ress" and tags:
+                    self._tags_ress = tags
+                    self._combo_ress["values"] = tags
+                    if not self._tag_ress_var.get() and beta1_tag:
+                        self._tag_ress_var.set(beta1_tag)
+                elif kind == "done":
+                    return
+        except queue.Empty:
+            pass
+        self.frame.after(100, self._poll_tags)
+
+    def _filter_combo(self, combo: ttk.Combobox, var: tk.StringVar, tags_attr: str) -> None:
+        """Filtre les valeurs de la combobox selon la saisie."""
+        typed   = var.get().lower()
+        all_tags: list[str] = getattr(self, tags_attr, [])
+        filtered = [t for t in all_tags if typed in t.lower()]
+        combo["values"] = filtered if filtered else all_tags
+        if filtered and not combo.winfo_ismapped():
+            combo.event_generate("<Down>")
 
     # ------------------------------------------------------------------
     # Helpers

@@ -14,6 +14,81 @@ import git
 
 
 # ---------------------------------------------------------------------------
+# Diff Git
+# ---------------------------------------------------------------------------
+
+def get_tags(repo_path: str, pattern: str = "") -> list[str]:
+    """
+    Retourne tous les tags du dépôt triés par date de commit (plus récent en premier).
+    Si pattern est fourni (ex: '*-beta1'), filtre par fnmatch.
+    """
+    import fnmatch
+    try:
+        repo = git.Repo(repo_path)
+        tags_sorted = sorted(repo.tags, key=lambda t: t.commit.committed_date, reverse=True)
+        names = [t.name for t in tags_sorted]
+        if pattern:
+            names = [n for n in names if fnmatch.fnmatch(n, pattern)]
+        return names
+    except (git.InvalidGitRepositoryError, git.GitCommandError, Exception):
+        return []
+
+
+def get_latest_beta1_tag(repo_path: str) -> str:
+    """Retourne le tag le plus récent correspondant à *-beta1, ou '' si aucun."""
+    tags = get_tags(repo_path, pattern="*-beta1")
+    return tags[0] if tags else ""
+
+
+def get_all_files_at_tag(repo_path: str, tag: str) -> list[str]:
+    """
+    Retourne tous les fichiers présents dans le dépôt au commit du tag donné.
+    Équivalent de `git ls-tree -r --name-only <tag>`.
+    """
+    try:
+        repo = git.Repo(repo_path)
+        commit = repo.commit(tag)
+        return sorted(item.path for item in commit.tree.traverse()
+                      if item.type == "blob")
+    except (git.InvalidGitRepositoryError, git.GitCommandError, Exception):
+        return []
+
+
+def find_previous_tag(repo_path: str, current_tag: str) -> str | None:
+    """
+    Trouve le tag précédent dans le dépôt local, trié par date de commit.
+    Retourne None si introuvable ou si current_tag est le premier.
+    """
+    try:
+        repo = git.Repo(repo_path)
+        tags_sorted = sorted(repo.tags, key=lambda t: t.commit.committed_date)
+        names = [t.name for t in tags_sorted]
+        idx = names.index(current_tag)
+        return names[idx - 1] if idx > 0 else None
+    except (git.InvalidGitRepositoryError, git.GitCommandError, ValueError, IndexError):
+        return None
+
+
+def get_diff_files(
+    repo_path: str,
+    tag_from: str,
+    tag_to: str,
+) -> list[tuple[str, str]]:
+    """
+    Retourne [(change_type, path)] entre tag_from et tag_to.
+    change_type : 'A' (ajouté), 'M' (modifié), 'D' (supprimé), 'R' (renommé), 'T' (type).
+    """
+    repo = git.Repo(repo_path)
+    commit_from = repo.commit(tag_from)
+    commit_to   = repo.commit(tag_to)
+    result = []
+    for diff in commit_from.diff(commit_to):
+        path = diff.b_path or diff.a_path
+        result.append((diff.change_type, path))
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Helpers internes
 # ---------------------------------------------------------------------------
 

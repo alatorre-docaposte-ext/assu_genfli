@@ -7,6 +7,7 @@ from src.prefs_dialog import PrefsDialog
 from src.wizard import Wizard
 from src.screens.screen1_project import Screen1Project
 from src.screens.screen2_delivery import Screen2Delivery
+from src.screens.screen3_files import Screen3Files
 from src import preferences as prefs_mod
 
 
@@ -66,6 +67,7 @@ def main():
     wizard = Wizard(root, prefs)
     wizard.register(Screen1Project)
     wizard.register(Screen2Delivery)
+    wizard.register(Screen3Files)
     wizard.start()
 
     # --- Restaurer état fenêtre de log ---
