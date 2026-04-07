@@ -206,7 +206,7 @@ class PrefsDialog:
         self._em_client_var      = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "client",       default=""))
         self._em_projet_var      = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "projet",       default=""))
         self._em_mode_var        = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "mode",         default=""))
-        self._em_reception_var   = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "reception_par", default=""))
+        self._em_reception_var   = tk.StringVar(value=prefs_mod.get(self._working, "livraison", "emettrice", "livreur", default=""))
 
         for row, (label, var) in enumerate([
             ("Nom :",               self._em_nom_var),
@@ -426,7 +426,7 @@ class PrefsDialog:
         self._dest_nom_var.set(prefs_mod.get(self._working,        "livraison", "destinataire", "nom",          default=""))
         self._dest_client_var.set(prefs_mod.get(self._working,    "livraison", "destinataire", "client",       default=""))
         self._dest_reception_var.set(prefs_mod.get(self._working, "livraison", "destinataire", "reception_par", default=""))
-        self._em_reception_var.set(prefs_mod.get(self._working,   "livraison", "emettrice",    "reception_par", default=""))
+        self._em_reception_var.set(prefs_mod.get(self._working,   "livraison", "emettrice",    "livreur", default=""))
         messagebox.showinfo("Import", "Paramètres importés. Validez avec OK ou Appliquer.", parent=self._win)
 
     # ------------------------------------------------------------------
@@ -457,7 +457,7 @@ class PrefsDialog:
         prefs_mod.set_(self._working, "livraison", "destinataire", "nom",          value=self._dest_nom_var.get())
         prefs_mod.set_(self._working, "livraison", "destinataire", "client",       value=self._dest_client_var.get())
         prefs_mod.set_(self._working, "livraison", "destinataire", "reception_par", value=self._dest_reception_var.get())
-        prefs_mod.set_(self._working, "livraison", "emettrice",    "reception_par", value=self._em_reception_var.get())
+        prefs_mod.set_(self._working, "livraison", "emettrice",    "livreur", value=self._em_reception_var.get())
         prefs_mod.set_(self._working, "sftp", "port", value=port)
 
     def _apply(self) -> None:

@@ -36,7 +36,7 @@ _DEFAULTS: dict = {
             "client": "",
             "projet": "",
             "mode": "",
-            "reception_par": "",
+            "livreur": "",
         },
         "destinataire": {
             "nom": "",

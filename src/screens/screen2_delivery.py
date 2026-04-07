@@ -89,24 +89,23 @@ class Screen2Delivery:
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 6)
         )
 
-        ttk.Label(f, text="Nom du client :", foreground="#555").grid(row=1, column=0, sticky="w", pady=1)
-        ttk.Label(f, text=em.get("client", "—"), foreground="#555").grid(row=1, column=1, sticky="w", padx=(6, 0), pady=1)
+        ttk.Label(f, text="Nom du client :").grid(row=1, column=0, sticky="w", pady=1)
+        ttk.Label(f, text=em.get("client", "—")).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=1)
 
-        ttk.Label(f, text="Nom du projet :", foreground="#555").grid(row=2, column=0, sticky="w", pady=1)
-        ttk.Label(f, text=em.get("projet", "—"), foreground="#555").grid(row=2, column=1, sticky="w", padx=(6, 0), pady=1)
+        ttk.Label(f, text="Nom du projet :").grid(row=2, column=0, sticky="w", pady=1)
+        ttk.Label(f, text=em.get("projet", "—")).grid(row=2, column=1, sticky="w", padx=(6, 0), pady=1)
 
-        ttk.Label(f, text="Mode de livraison :", foreground="#555").grid(row=3, column=0, sticky="w", pady=1)
-        ttk.Label(f, text=em.get("mode", "—"), foreground="#555").grid(row=3, column=1, sticky="w", padx=(6, 0), pady=1)
+        ttk.Label(f, text="Mode de livraison :").grid(row=3, column=0, sticky="w", pady=1)
+        ttk.Label(f, text=em.get("mode", "—")).grid(row=3, column=1, sticky="w", padx=(6, 0), pady=1)
 
         # Livreur (pré-rempli depuis préférences livraison puis général.username)
-        ttk.Separator(f, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=8)
-        ttk.Label(f, text="Livreur :").grid(row=5, column=0, sticky="e", padx=(0, 6), pady=4)
+        ttk.Label(f, text="Livreur :").grid(row=5, column=0, sticky="w", padx=(0, 6), pady=4)
         default_livreur = (
             prefs_mod.get(self._prefs, "livraison", "emettrice", "reception_par", default="")
             or prefs_mod.get(self._prefs, "general", "username", default="")
         )
         session_livreur = (
-            prefs_mod.get(self._prefs, "session", "delivery", "livreur", default="")
+            prefs_mod.get(self._prefs, "session", "emettrice", "livraison", default="")
             or default_livreur
         )
         self._livreur_var = tk.StringVar(value=session_livreur)
@@ -132,14 +131,13 @@ class Screen2Delivery:
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 6)
         )
 
-        ttk.Label(f, text="Nom du client :", foreground="#555").grid(row=1, column=0, sticky="w", pady=1)
-        ttk.Label(f, text=dest.get("client", "—"), foreground="#555").grid(row=1, column=1, sticky="w", padx=(6, 0), pady=1)
+        ttk.Label(f, text="Nom du client :").grid(row=1, column=0, sticky="w", pady=1)
+        ttk.Label(f, text=dest.get("client", "—")).grid(row=1, column=1, sticky="w", padx=(6, 0), pady=1)
 
-        ttk.Label(f, text="Nom du projet :", foreground="#555").grid(row=2, column=0, sticky="w", pady=1)
-        ttk.Label(f, text=dest_projet, foreground="#555").grid(row=2, column=1, sticky="w", padx=(6, 0), pady=1)
+        ttk.Label(f, text="Nom du projet :").grid(row=2, column=0, sticky="w", pady=1)
+        ttk.Label(f, text=dest_projet).grid(row=2, column=1, sticky="w", padx=(6, 0), pady=1)
 
         # Réception par
-        ttk.Separator(f, orient="horizontal").grid(row=3, column=0, columnspan=2, sticky="ew", pady=8)
         ttk.Label(f, text="Réception par :").grid(row=4, column=0, sticky="e", padx=(0, 6), pady=4)
         default_recep = prefs_mod.get(self._prefs, "livraison", "destinataire", "reception_par", default="")
         session_recep = (
