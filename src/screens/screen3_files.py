@@ -231,7 +231,10 @@ class Screen3Files:
 
     def _refresh_tree(self) -> None:
         self._tree.delete(*self._tree.get_children())
-        for i, f in enumerate(self._files):
+        # Fichiers cochés en premier, puis non cochés — ordre stable à l'intérieur de chaque groupe
+        ordered = sorted(range(len(self._files)), key=lambda i: (not self._files[i]["checked"], self._files[i]["path"]))
+        for i in ordered:
+            f      = self._files[i]
             chk    = _CHECKED if f["checked"] else _UNCHECKED
             label  = _STATUS_TEXT.get(f["status"], f["status"])
             source = f.get("source", "?")
