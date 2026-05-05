@@ -87,8 +87,10 @@ class Screen1Project:
         canvas.bind("<Configure>", _on_resize)
 
         def _on_scroll(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            if canvas.winfo_exists():
+                canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         canvas.bind_all("<MouseWheel>", _on_scroll)
+        canvas.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 
@@ -195,6 +197,8 @@ class Screen1Project:
 
         # Stocker dans les prefs de session pour les écrans suivants
         prefs_mod.set_(self._prefs, "session", "selected_project", value=project)
+        # Effacer les fichiers mis en cache pour forcer le recalcul du diff sur le nouveau projet
+        prefs_mod.set_(self._prefs, "session", "files", value=None)
 
         self._wizard.set_next_enabled(True)
 
