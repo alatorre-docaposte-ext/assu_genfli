@@ -6,6 +6,7 @@ Gère SSH (clé + passphrase optionnelle) et HTTPS (credentials en base64).
 from __future__ import annotations
 
 import base64
+import datetime
 import os
 import tempfile
 from typing import Callable
@@ -86,6 +87,65 @@ def get_diff_files(
         path = diff.b_path or diff.a_path
         result.append((diff.change_type, path))
     return result
+
+
+def get_diff_files_head_vs_prev(repo_path: str) -> list[tuple[str, str]]:
+    """
+    Retourne [(change_type, path)] entre le commit précédent (HEAD~1) et HEAD.
+    change_type : 'A' (ajouté), 'M' (modifié), 'D' (supprimé), 'R' (renommé), 'T' (type).
+    Retourne une liste vide s'il n'y a pas de commit précédent.
+    """
+    repo = git.Repo(repo_path)
+    head = repo.head.commit
+    if not head.parents:
+        return []
+    prev = head.parents[0]
+    result = []
+    for diff in prev.diff(head):
+        path = diff.b_path or diff.a_path
+        result.append((diff.change_type, path))
+    return result
+
+
+def get_all_files_at_head(repo_path: str) -> list[str]:
+    """
+    Retourne tous les fichiers présents au HEAD du dépôt.
+    Équivalent de `git ls-tree -r --name-only HEAD`.
+    """
+    try:
+        repo = git.Repo(repo_path)
+        commit = repo.head.commit
+        return sorted(item.path for item in commit.tree.traverse()
+                      if item.type == "blob")
+    except (git.InvalidGitRepositoryError, git.GitCommandError, Exception):
+        return []
+
+
+def get_commit_log(repo_path: str, max_count: int = 60) -> list[dict]:
+    """
+    Retourne les derniers commits du dépôt avec leurs tags associés.
+    Chaque dict : hash, short_hash, date, author, message, tags (list[str]).
+    """
+    try:
+        repo = git.Repo(repo_path)
+        # Mapping SHA → liste de noms de tags
+        tag_map: dict[str, list[str]] = {}
+        for t in repo.tags:
+            sha = t.commit.hexsha
+            tag_map.setdefault(sha, []).append(t.name)
+        result = []
+        for c in repo.iter_commits(max_count=max_count):
+            result.append({
+                "hash":       c.hexsha,
+                "short_hash": c.hexsha[:7],
+                "date":       datetime.datetime.fromtimestamp(c.committed_date).strftime("%Y-%m-%d %H:%M"),
+                "author":     c.author.name,
+                "message":    c.message.strip().split("\n")[0],
+                "tags":       tag_map.get(c.hexsha, []),
+            })
+        return result
+    except (git.InvalidGitRepositoryError, git.GitCommandError, Exception):
+        return []
 
 
 # ---------------------------------------------------------------------------

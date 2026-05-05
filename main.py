@@ -66,8 +66,8 @@ def main():
     # --- Wizard ---
     wizard = Wizard(root, prefs)
     wizard.register(Screen1Project)
-    wizard.register(Screen2Delivery)
     wizard.register(Screen3Files)
+    wizard.register(Screen2Delivery)
     wizard.start()
 
     # --- Restaurer état fenêtre de log ---

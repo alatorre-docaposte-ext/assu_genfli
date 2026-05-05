@@ -62,8 +62,6 @@ class Screen3Files:
         ttk.Button(tb, text="☑ Tout cocher",    command=self._check_all).pack(side="left", padx=(0, 4))
         ttk.Button(tb, text="☐ Tout décocher",  command=self._uncheck_all).pack(side="left", padx=(0, 4))
         ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=6)
-        ttk.Button(tb, text="+ Ajouter",        command=self._add_manual).pack(side="left", padx=(0, 4))
-        ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=6)
         ttk.Button(tb, text="⟳ Recalculer",     command=self._start_diff).pack(side="left")
 
         self._diff_status_var = tk.StringVar(value="")
@@ -141,55 +139,43 @@ class Screen3Files:
         self._files = [f for f in self._files if f.get("source") == "Manuel"]
         self._refresh_tree()
 
-        delivery = prefs_mod.get(self._prefs, "session", "delivery", default={})
         project  = prefs_mod.get(self._prefs, "session", "selected_project", default={})
+        dev_path = project.get("depot_dev", "")
 
-        tag_wfd  = delivery.get("tag_wfd", "")
-        tag_ress = delivery.get("tag_ressources", "") or delivery.get("tag_ress", "")
-
-        tasks: list[tuple[str, str, str]] = []
-        if tag_wfd  and project.get("depot_wfd_local"):
-            tasks.append(("WFD",  project["depot_wfd_local"],  tag_wfd))
-        if tag_ress and project.get("depot_ress_local"):
-            tasks.append(("RESS", project["depot_ress_local"], tag_ress))
-
-        if not tasks:
-            self._diff_status_var.set("⚠ Aucun dépôt / tag configuré (vérifiez l'étape 2)")
+        if not dev_path:
+            self._diff_status_var.set("⚠ Dépôt DEV non configuré pour ce projet")
             self._wizard.set_next_enabled(True)
             return
 
         def run() -> None:
-            for source, repo_path, current_tag in tasks:
-                # 1. Calcul du diff (fichiers à cocher)
-                self._queue.put(("status", f"[{source}] Recherche du tag précédent…"))
-                prev_tag = git_ops.find_previous_tag(repo_path, current_tag)
-                diff_paths: set[tuple[str, str]] = set()   # {(change_type, path)}
-                if prev_tag:
-                    self._queue.put(("status", f"[{source}] Diff {prev_tag} → {current_tag}…"))
-                    try:
-                        for change_type, path in git_ops.get_diff_files(repo_path, prev_tag, current_tag):
-                            diff_paths.add((change_type, path))
-                    except Exception as exc:
-                        self._queue.put(("warning", f"[{source}] Diff impossible : {exc}"))
-                else:
-                    self._queue.put(("warning", f"[{source}] Pas de tag précédent, tous les fichiers décochés"))
+            source = "DEV"
+            # 1. Diff HEAD~1 → HEAD
+            self._queue.put(("status", "[DEV] Diff HEAD~1 → HEAD…"))
+            diff_paths: set[tuple[str, str]] = set()
+            try:
+                for change_type, path in git_ops.get_diff_files_head_vs_prev(dev_path):
+                    diff_paths.add((change_type, path))
+                if not diff_paths:
+                    self._queue.put(("warning", "[DEV] Aucun fichier modifié entre HEAD~1 et HEAD"))
+            except Exception as exc:
+                self._queue.put(("warning", f"[DEV] Diff impossible : {exc}"))
 
-                # 2. Tous les fichiers du dépôt au tag courant
-                self._queue.put(("status", f"[{source}] Lecture de tous les fichiers au tag {current_tag}…"))
-                try:
-                    all_paths = git_ops.get_all_files_at_tag(repo_path, current_tag)
-                    diff_path_set = {p for _, p in diff_paths}
-                    diff_type_map = {p: ct for ct, p in diff_paths}
-                    for path in all_paths:
-                        in_diff   = path in diff_path_set
-                        ct        = diff_type_map.get(path, "M")
-                        self._queue.put(("file", (source, ct, path, in_diff)))
-                    # Fichiers supprimés (dans le diff mais absents du tree = 'D')
-                    for ct, path in diff_paths:
-                        if ct == "D":
-                            self._queue.put(("file", (source, "D", path, True)))
-                except Exception as exc:
-                    self._queue.put(("warning", f"[{source}] Lecture impossible : {exc}"))
+            # 3. Tous les fichiers au HEAD
+            self._queue.put(("status", "[DEV] Lecture de tous les fichiers au HEAD…"))
+            try:
+                all_paths = git_ops.get_all_files_at_head(dev_path)
+                diff_path_set = {p for _, p in diff_paths}
+                diff_type_map = {p: ct for ct, p in diff_paths}
+                for path in all_paths:
+                    in_diff = path in diff_path_set
+                    ct      = diff_type_map.get(path, "M")
+                    self._queue.put(("file", (source, ct, path, in_diff)))
+                # Fichiers supprimés (dans le diff mais absents du HEAD)
+                for ct, path in diff_paths:
+                    if ct == "D":
+                        self._queue.put(("file", (source, "D", path, True)))
+            except Exception as exc:
+                self._queue.put(("warning", f"[DEV] Lecture impossible : {exc}"))
 
             self._queue.put(("done", None))
 

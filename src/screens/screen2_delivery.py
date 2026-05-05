@@ -67,11 +67,13 @@ class Screen2Delivery:
 
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         canvas.bind("<Configure>", lambda e: canvas.itemconfig(win_id, width=e.width))
-        canvas.bind_all("<MouseWheel>", lambda e: canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        canvas.bind_all("<MouseWheel>", lambda e: canvas.winfo_exists() and canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
+        canvas.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>"))
 
         self._build_emettrice(inner)
         self._build_destinataire(inner)
         self._build_fiche(inner)
+        self._build_git_graph(inner)
 
         # Activer Suivant dès le début (tous les champs ont des valeurs par défaut valides)
         self._wizard.set_next_enabled(True)
@@ -291,6 +293,128 @@ class Screen2Delivery:
         combo["values"] = filtered if filtered else all_tags
         if filtered and not combo.winfo_ismapped():
             combo.event_generate("<Down>")
+
+    # ------------------------------------------------------------------
+    # Git graph (historique des commits)
+    # ------------------------------------------------------------------
+
+    def _build_git_graph(self, parent: ttk.Frame) -> None:
+        self._graph_wfd_tree:  ttk.Treeview | None = None
+        self._graph_ress_tree: ttk.Treeview | None = None
+        self._commits_wfd:  list[dict] = []
+        self._commits_ress: list[dict] = []
+        self._graph_queue: queue.Queue = queue.Queue()
+
+        lf = ttk.LabelFrame(parent, text="Historique Git", padding=8)
+        lf.grid(row=2, column=0, columnspan=2, sticky="nsew", pady=(8, 0))
+        lf.columnconfigure(0, weight=1)
+        lf.rowconfigure(0, weight=1)
+
+        project   = prefs_mod.get(self._prefs, "session", "selected_project", default={})
+        wfd_path  = project.get("depot_wfd_local",  "")
+        ress_path = project.get("depot_ress_local", "")
+
+        self._graph_notebook = ttk.Notebook(lf)
+        self._graph_notebook.grid(row=0, column=0, sticky="nsew")
+
+        if wfd_path:
+            tab_wfd = ttk.Frame(self._graph_notebook)
+            self._graph_notebook.add(tab_wfd, text="WFD maîtres")
+            self._graph_wfd_tree = self._build_graph_tree(tab_wfd)
+
+        if ress_path:
+            tab_ress = ttk.Frame(self._graph_notebook)
+            self._graph_notebook.add(tab_ress, text="Ressources")
+            self._graph_ress_tree = self._build_graph_tree(tab_ress)
+
+        if wfd_path or ress_path:
+            self._start_graph_loading(wfd_path, ress_path)
+
+    def _build_graph_tree(self, parent: ttk.Frame) -> ttk.Treeview:
+        cols = ("tags", "hash", "date", "author", "message")
+        tree = ttk.Treeview(parent, columns=cols, show="headings", height=9)
+        tree.heading("tags",    text="Tags")
+        tree.heading("hash",    text="Hash")
+        tree.heading("date",    text="Date")
+        tree.heading("author",  text="Auteur")
+        tree.heading("message", text="Message")
+        tree.column("tags",    width=190, stretch=False)
+        tree.column("hash",    width=65,  stretch=False)
+        tree.column("date",    width=130, stretch=False)
+        tree.column("author",  width=110, stretch=False)
+        tree.column("message", width=200, stretch=True)
+
+        vsb = ttk.Scrollbar(parent, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+
+        tree.tag_configure("selected_tag", background="#FFF3B0", font=("Segoe UI", 9, "bold"))
+        tree.tag_configure("has_tag",      background="#E8F5E9")
+        return tree
+
+    def _start_graph_loading(self, wfd_path: str, ress_path: str) -> None:
+        def run() -> None:
+            if wfd_path:
+                commits = git_ops.get_commit_log(wfd_path, max_count=60)
+                self._graph_queue.put(("wfd", commits))
+            if ress_path:
+                commits = git_ops.get_commit_log(ress_path, max_count=60)
+                self._graph_queue.put(("ress", commits))
+            self._graph_queue.put(("done", None))
+
+        threading.Thread(target=run, daemon=True).start()
+        self._poll_graph()
+
+    def _poll_graph(self) -> None:
+        try:
+            while True:
+                kind, commits = self._graph_queue.get_nowait()
+                if kind == "wfd":
+                    self._commits_wfd = commits
+                    if self._graph_wfd_tree:
+                        self._fill_graph_tree(self._graph_wfd_tree, commits, self._tag_wfd_var.get())
+                elif kind == "ress":
+                    self._commits_ress = commits
+                    if self._graph_ress_tree:
+                        self._fill_graph_tree(self._graph_ress_tree, commits, self._tag_ress_var.get())
+                elif kind == "done":
+                    if self._graph_wfd_tree:
+                        self._tag_wfd_var.trace_add("write", lambda *_: self._refresh_graph_highlights())
+                    if self._graph_ress_tree:
+                        self._tag_ress_var.trace_add("write", lambda *_: self._refresh_graph_highlights())
+                    return
+        except queue.Empty:
+            pass
+        self.frame.after(100, self._poll_graph)
+
+    def _fill_graph_tree(self, tree: ttk.Treeview, commits: list[dict], selected_tag: str) -> None:
+        tree.delete(*tree.get_children())
+        scroll_to: str | None = None
+        for c in commits:
+            tag_names = c["tags"]
+            tags_str  = "  ".join(sorted(tag_names)) if tag_names else ""
+            if selected_tag and selected_tag in tag_names:
+                row_tag = "selected_tag"
+            elif tag_names:
+                row_tag = "has_tag"
+            else:
+                row_tag = ""
+            iid = tree.insert("", "end",
+                              values=(tags_str, c["short_hash"], c["date"], c["author"], c["message"]),
+                              tags=(row_tag,) if row_tag else ())
+            if row_tag == "selected_tag":
+                scroll_to = iid
+        if scroll_to:
+            tree.see(scroll_to)
+
+    def _refresh_graph_highlights(self) -> None:
+        if self._commits_wfd and self._graph_wfd_tree:
+            self._fill_graph_tree(self._graph_wfd_tree, self._commits_wfd, self._tag_wfd_var.get())
+        if self._commits_ress and self._graph_ress_tree:
+            self._fill_graph_tree(self._graph_ress_tree, self._commits_ress, self._tag_ress_var.get())
 
     # ------------------------------------------------------------------
     # Helpers
