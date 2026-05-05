@@ -62,6 +62,13 @@ class Screen3Files:
         ttk.Button(tb, text="☑ Tout cocher",    command=self._check_all).pack(side="left", padx=(0, 4))
         ttk.Button(tb, text="☐ Tout décocher",  command=self._uncheck_all).pack(side="left", padx=(0, 4))
         ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=6)
+        ttk.Label(tb, text="🔍").pack(side="left", padx=(0, 2))
+        self._filter_var = tk.StringVar()
+        self._filter_var.trace_add("write", lambda *_: self._on_filter_change())
+        self._filter_entry = ttk.Entry(tb, textvariable=self._filter_var, width=24)
+        self._filter_entry.pack(side="left", padx=(0, 4))
+        ttk.Button(tb, text="✕", width=2, command=lambda: self._filter_var.set("")).pack(side="left", padx=(0, 6))
+        ttk.Separator(tb, orient="vertical").pack(side="left", fill="y", padx=6)
         ttk.Button(tb, text="⟳ Recalculer",     command=self._start_diff).pack(side="left")
 
         self._diff_status_var = tk.StringVar(value="")
@@ -217,10 +224,13 @@ class Screen3Files:
 
     def _refresh_tree(self) -> None:
         self._tree.delete(*self._tree.get_children())
+        needle = self._filter_var.get().lower() if hasattr(self, "_filter_var") else ""
         # Fichiers cochés en premier, puis non cochés — ordre stable à l'intérieur de chaque groupe
         ordered = sorted(range(len(self._files)), key=lambda i: (not self._files[i]["checked"], self._files[i]["path"]))
         for i in ordered:
             f      = self._files[i]
+            if needle and needle not in f["path"].lower():
+                continue
             chk    = _CHECKED if f["checked"] else _UNCHECKED
             label  = _STATUS_TEXT.get(f["status"], f["status"])
             source = f.get("source", "?")
@@ -249,10 +259,19 @@ class Screen3Files:
         self._refresh_tree()
         self._update_summary()
 
+    def _on_filter_change(self) -> None:
+        self._refresh_tree()
+        self._update_summary()
+
     def _update_summary(self) -> None:
+        needle   = self._filter_var.get().lower() if hasattr(self, "_filter_var") else ""
         total    = len(self._files)
         selected = sum(1 for f in self._files if f["checked"])
-        self._summary_var.set(f"{selected} fichier(s) sélectionné(s) sur {total}")
+        visible  = sum(1 for f in self._files if not needle or needle in f["path"].lower())
+        if needle:
+            self._summary_var.set(f"{selected} fichier(s) sélectionné(s) — {visible}/{total} affiché(s)")
+        else:
+            self._summary_var.set(f"{selected} fichier(s) sélectionné(s) sur {total}")
         self._wizard.set_next_enabled(selected > 0)
 
     # ------------------------------------------------------------------
