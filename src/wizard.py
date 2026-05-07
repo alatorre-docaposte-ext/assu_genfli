@@ -153,7 +153,7 @@ class Wizard:
         # Suivant : désactivé par défaut, l'écran appelle set_next_enabled()
         last = (index == len(self._steps) - 1)
         self._btn_next.config(
-            text="Terminer" if last else "Suivant  ▶",
+            text="Livrer  ✓" if last else "Suivant  ▶",
             state="disabled",
         )
         # Laisser l'écran décider de l'état initial du bouton Suivant

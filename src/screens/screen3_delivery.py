@@ -20,13 +20,16 @@ Layout (fidèle à la maquette step2.png) :
 """
 
 import datetime
+import os
 import queue
+import subprocess
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 from src import git_ops
 from src import preferences as prefs_mod
+from src import fli_pdf
 from src.logger import get_logger
 from src.widgets import DateEntry
 
@@ -61,9 +64,6 @@ class Screen3Delivery:
         self._build_destinataire(inner)
         self._build_fiche(inner)
         self._build_git_livraison(inner)
-
-        # Activer Suivant dès le début (tous les champs ont des valeurs par défaut valides)
-        self._wizard.set_next_enabled(True)
 
     # ------------------------------------------------------------------
     # Panneau entité émettrice
@@ -239,6 +239,8 @@ class Screen3Delivery:
         self._tags_wfd:  list[str] = []
         self._tags_ress: list[str] = []
 
+        # Désactiver "Livrer" jusqu'à la fin du chargement des tags
+        self._wizard.set_next_enabled(False)
         # Charge les tags en arrière-plan
         self._start_tag_loading()
 
@@ -303,6 +305,7 @@ class Screen3Delivery:
                         self._last_fli_ress = fli
                 elif kind == "done":
                     self._apply_fli_id()
+                    self._wizard.set_next_enabled(True)
                     return
         except queue.Empty:
             pass
@@ -361,10 +364,10 @@ class Screen3Delivery:
     # ------------------------------------------------------------------
 
     def on_shown(self) -> None:
-        self._wizard.set_next_enabled(True)
+        pass
 
     def on_next(self) -> bool:
-        """Valide et sauvegarde les données de session."""
+        """Valide, sauvegarde et ouvre la fenêtre de confirmation/livraison."""
         try:
             fli_id = int(self._fli_id_var.get())
             if fli_id <= 0:
@@ -389,7 +392,210 @@ class Screen3Delivery:
             "commit_message":  self._fli_title_var.get(),
             "fli_title":       self._fli_title_var.get(),
         }
-
         prefs_mod.set_(self._prefs, "session", "delivery", value=delivery)
-        log.info(f"Livraison configurée : {delivery['fli_title']} — livreur={delivery['livreur']}")
+        log.info("Livraison configurée : %s — livreur=%s",
+                 delivery["fli_title"], delivery["livreur"])
+
+        _DeliveryConfirmDialog(self.frame, self._prefs, delivery)
         return True
+
+
+# ---------------------------------------------------------------------------
+# Fenêtre de confirmation / génération des FLI
+# ---------------------------------------------------------------------------
+
+class _DeliveryConfirmDialog:
+    """
+    Fenêtre modale affichant le résumé de la livraison et permettant
+    de générer les PDFs FLI (un par dépôt cible).
+    """
+
+    _REPO_TARGETS: dict[str, tuple[str, ...]] = {
+        "WFD":    ("WFD", "BOTH"),
+        "RESS":   ("RESS", "BOTH"),
+        "COMMUN": ("COMMUN",),
+    }
+
+    def __init__(self, parent: tk.Misc, prefs: dict, delivery: dict) -> None:
+        self._prefs    = prefs
+        self._delivery = delivery
+        self._log      = get_logger()
+
+        # Fichiers cochés depuis la session
+        session_files: list[dict] = prefs_mod.get(prefs, "session", "files", default=[]) or []
+        self._checked = [f for f in session_files if f.get("checked")]
+
+        # Fichiers par repo
+        self._repo_files: dict[str, list[dict]] = {}
+        for repo, targets in self._REPO_TARGETS.items():
+            subset = [f for f in self._checked if f.get("cible") in targets]
+            if subset:
+                self._repo_files[repo] = subset
+
+        project = prefs_mod.get(prefs, "session", "selected_project", default={})
+        code    = project.get("code", "XXX").upper()
+        fli_id  = delivery.get("fli_id", 0)
+        self._fli_ids: dict[str, str] = {
+            repo: f"FLI_{code}_EXT_{repo}_LIV_{fli_id:05d}"
+            for repo in self._repo_files
+        }
+
+        # Dossier de sortie par défaut
+        default_out = prefs_mod.get(prefs, "general", "output_dir", default="") or os.path.join(
+            os.path.expanduser("~"), "Documents"
+        )
+        self._out_var = tk.StringVar(value=default_out)
+
+        self._win = tk.Toplevel(parent)
+        self._win.title("Confirmation de livraison")
+        self._win.grab_set()
+        self._win.transient(parent)
+        self._win.resizable(True, False)
+        self._win.minsize(540, 0)
+        self._win.columnconfigure(0, weight=1)
+        self._win.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        saved_geom = prefs_mod.get(prefs, "delivery_confirm_dialog", "geometry", default="")
+        if saved_geom:
+            self._win.geometry(saved_geom)
+
+        self._build()
+        self._win.wait_window()
+
+    # ------------------------------------------------------------------
+
+    def _build(self) -> None:
+        pad = {"padx": 16, "pady": (6, 0)}
+
+        # --- Titre ---
+        ttk.Label(self._win, text="Livraison prête à générer",
+                  font=("Segoe UI", 12, "bold")).grid(
+            row=0, column=0, sticky="w", padx=16, pady=(14, 4))
+
+        # --- Résumé livraison ---
+        d = self._delivery
+        project = prefs_mod.get(self._prefs, "session", "selected_project", default={})
+        summary_lines = [
+            ("Projet",           project.get("name", "—")),
+            ("FLI (base)",       d.get("fli_title", "—")),
+            ("Livreur",          d.get("livreur", "—")),
+            ("Date de livraison", d.get("date_livraison", "—")),
+            ("Tag WFD",          d.get("tag_wfd", "—") or "—"),
+            ("Tag Ressources",   d.get("tag_ressources", "—") or "—"),
+        ]
+        summary_f = ttk.LabelFrame(self._win, text="Résumé", padding=8)
+        summary_f.grid(row=1, column=0, sticky="ew", padx=16, pady=(4, 8))
+        summary_f.columnconfigure(1, weight=1)
+        for i, (lbl, val) in enumerate(summary_lines):
+            ttk.Label(summary_f, text=f"{lbl} :", foreground="gray").grid(
+                row=i, column=0, sticky="w", padx=(0, 8), pady=1)
+            ttk.Label(summary_f, text=val, font=("Segoe UI", 9, "bold")).grid(
+                row=i, column=1, sticky="w", pady=1)
+
+        # --- PDFs à générer ---
+        pdf_f = ttk.LabelFrame(self._win, text="Fiches de livraison à générer", padding=8)
+        pdf_f.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
+        pdf_f.columnconfigure(1, weight=1)
+        if not self._repo_files:
+            ttk.Label(pdf_f, text="Aucun fichier sélectionné.",
+                      foreground="#cc0000").grid(row=0, column=0, columnspan=2, sticky="w")
+        else:
+            for i, (repo, files) in enumerate(self._repo_files.items()):
+                fli_id_str = self._fli_ids[repo]
+                ttk.Label(pdf_f, text=f"{fli_id_str}.pdf",
+                          font=("Segoe UI", 9, "bold")).grid(
+                    row=i, column=0, sticky="w", pady=2)
+                ttk.Label(pdf_f, text=f"{len(files)} fichier(s)",
+                          foreground="gray").grid(row=i, column=1, sticky="w", padx=(8, 0))
+
+        # --- Dossier de sortie ---
+        out_f = ttk.Frame(self._win, padding=(16, 0, 16, 0))
+        out_f.grid(row=3, column=0, sticky="ew", pady=(0, 8))
+        out_f.columnconfigure(1, weight=1)
+        ttk.Label(out_f, text="Dossier de sortie :").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Entry(out_f, textvariable=self._out_var).grid(row=0, column=1, sticky="ew")
+        ttk.Button(out_f, text="Parcourir…", command=self._browse_output).grid(
+            row=0, column=2, padx=(6, 0))
+
+        # --- Statut ---
+        self._status_var = tk.StringVar(value="")
+        self._status_lbl = ttk.Label(self._win, textvariable=self._status_var,
+                                     foreground="#006600", wraplength=500)
+        self._status_lbl.grid(row=4, column=0, sticky="w", padx=16, pady=(0, 4))
+
+        # --- Boutons ---
+        btn_f = ttk.Frame(self._win, padding=(16, 0, 16, 14))
+        btn_f.grid(row=5, column=0, sticky="e")
+        self._btn_generate = ttk.Button(btn_f, text="Générer les FLI",
+                                        command=self._generate,
+                                        state="disabled" if not self._repo_files else "normal")
+        self._btn_generate.pack(side="left", padx=(0, 6))
+        self._btn_open = ttk.Button(btn_f, text="Ouvrir le dossier",
+                                    command=self._open_folder, state="disabled")
+        self._btn_open.pack(side="left", padx=(0, 6))
+        ttk.Button(btn_f, text="Fermer", command=self._on_close).pack(side="left")
+
+    # ------------------------------------------------------------------
+
+    def _on_close(self) -> None:
+        prefs_mod.set_(self._prefs, "delivery_confirm_dialog", "geometry",
+                       value=self._win.geometry())
+        self._win.destroy()
+
+    # ------------------------------------------------------------------
+
+    def _browse_output(self) -> None:
+        folder = filedialog.askdirectory(
+            title="Dossier de sortie pour les PDF",
+            initialdir=self._out_var.get() or os.path.expanduser("~"),
+            parent=self._win,
+        )
+        if folder:
+            self._out_var.set(folder)
+            prefs_mod.set_(self._prefs, "general", "output_dir", value=folder)
+
+    def _generate(self) -> None:
+        out_dir = self._out_var.get().strip()
+        if not out_dir:
+            messagebox.showwarning("Dossier manquant",
+                                   "Veuillez sélectionner un dossier de sortie.",
+                                   parent=self._win)
+            return
+        os.makedirs(out_dir, exist_ok=True)
+
+        self._btn_generate.config(state="disabled")
+        self._status_var.set("Génération en cours…")
+        self._win.update_idletasks()
+
+        context = fli_pdf.build_context(self._prefs, self._delivery)
+        generated: list[str] = []
+        errors: list[str] = []
+
+        for repo, files in self._repo_files.items():
+            fli_id_str = self._fli_ids[repo]
+            out_path   = os.path.join(out_dir, f"{fli_id_str}.pdf")
+            try:
+                fli_pdf.generate_fli(out_path, repo, fli_id_str, context, files)
+                generated.append(out_path)
+                self._log.info("[fli_pdf] Généré : %s  (%d fichiers)", out_path, len(files))
+            except Exception as exc:
+                errors.append(f"{repo}: {exc}")
+                self._log.error("[fli_pdf] Erreur %s : %s", repo, exc)
+
+        if errors:
+            self._status_var.set("⚠ Erreurs : " + " | ".join(errors))
+            self._status_lbl.config(foreground="#cc0000")
+        else:
+            self._status_var.set(f"✓ {len(generated)} PDF(s) générés dans {out_dir}")
+            self._status_lbl.config(foreground="#006600")
+            self._btn_open.config(state="normal")
+
+        self._btn_generate.config(state="normal")
+        self._generated_dir = out_dir
+
+    def _open_folder(self) -> None:
+        folder = getattr(self, "_generated_dir", self._out_var.get())
+        if os.name == "nt":
+            os.startfile(folder)
+        else:
+            subprocess.Popen(["xdg-open", folder])

@@ -16,6 +16,7 @@ _DEFAULTS: dict = {
         "username": "",
         "work_dir": "",
         "log_file": "",
+        "output_dir": "",
     },
     "projects": [],   # liste de dicts projet
     "git": {

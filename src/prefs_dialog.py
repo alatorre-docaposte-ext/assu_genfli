@@ -88,25 +88,32 @@ class PrefsDialog:
         self._username_var = tk.StringVar(value=prefs_mod.get(self._working, "general", "username", default=""))
         ttk.Entry(f, textvariable=self._username_var).grid(row=0, column=1, columnspan=2, sticky="ew", pady=6)
 
+        # Répertoire de sortie
+        ttk.Label(f, text="Répertoire de sortie :").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
+        _out_default = prefs_mod.get(self._working, "general", "output_dir", default="")
+        self._output_dir_var = tk.StringVar(value=_out_default)
+        ttk.Entry(f, textvariable=self._output_dir_var).grid(row=1, column=1, sticky="ew", pady=6)
+        ttk.Button(f, text="Browse...", command=lambda: self._browse_dir(self._output_dir_var)).grid(row=1, column=2, padx=(4, 0), pady=6)
+
         # Répertoire de travail
-        ttk.Label(f, text="Répertoire de travail :").grid(row=1, column=0, sticky="e", padx=(0, 8), pady=6)
+        ttk.Label(f, text="Répertoire de travail :").grid(row=2, column=0, sticky="e", padx=(0, 8), pady=6)
         self._workdir_var = tk.StringVar(value=prefs_mod.get(self._working, "general", "work_dir", default=""))
-        ttk.Entry(f, textvariable=self._workdir_var).grid(row=1, column=1, sticky="ew", pady=6)
-        ttk.Button(f, text="Browse...", command=lambda: self._browse_dir(self._workdir_var)).grid(row=1, column=2, padx=(4, 0), pady=6)
+        ttk.Entry(f, textvariable=self._workdir_var).grid(row=2, column=1, sticky="ew", pady=6)
+        ttk.Button(f, text="Browse...", command=lambda: self._browse_dir(self._workdir_var)).grid(row=2, column=2, padx=(4, 0), pady=6)
 
         # Fichier de journal
-        ttk.Label(f, text="Fichier de journal :").grid(row=2, column=0, sticky="e", padx=(0, 8), pady=6)
+        ttk.Label(f, text="Fichier de journal :").grid(row=3, column=0, sticky="e", padx=(0, 8), pady=6)
         self._logfile_var = tk.StringVar(value=prefs_mod.get(self._working, "general", "log_file", default=""))
-        ttk.Entry(f, textvariable=self._logfile_var).grid(row=2, column=1, sticky="ew", pady=6)
+        ttk.Entry(f, textvariable=self._logfile_var).grid(row=3, column=1, sticky="ew", pady=6)
         ttk.Button(f, text="Browse...", command=lambda: self._browse_save(
             self._logfile_var, [("Fichiers log", "*.log"), ("Tous", "*.*")]
-        )).grid(row=2, column=2, padx=(4, 0), pady=6)
+        )).grid(row=3, column=2, padx=(4, 0), pady=6)
 
         # Séparateur + Export/Import
-        ttk.Separator(f, orient="horizontal").grid(row=3, column=0, columnspan=3, sticky="ew", pady=10)
-        ttk.Label(f, text="Paramètres :").grid(row=4, column=0, sticky="e", padx=(0, 8), pady=6)
+        ttk.Separator(f, orient="horizontal").grid(row=4, column=0, columnspan=3, sticky="ew", pady=10)
+        ttk.Label(f, text="Paramètres :").grid(row=5, column=0, sticky="e", padx=(0, 8), pady=6)
         pf = ttk.Frame(f)
-        pf.grid(row=4, column=1, columnspan=2, sticky="w")
+        pf.grid(row=5, column=1, columnspan=2, sticky="w")
         ttk.Button(pf, text="Exporter...", command=self._export).pack(side="top", anchor="w", pady=2)
         ttk.Button(pf, text="Importer...", command=self._import).pack(side="top", anchor="w", pady=2)
 
@@ -479,6 +486,7 @@ class PrefsDialog:
 
         # Rafraîchir les widgets
         self._username_var.set(prefs_mod.get(self._working, "general", "username", default=""))
+        self._output_dir_var.set(prefs_mod.get(self._working, "general", "output_dir", default=""))
         self._workdir_var.set(prefs_mod.get(self._working, "general", "work_dir", default=""))
         self._logfile_var.set(prefs_mod.get(self._working, "general", "log_file", default=""))
         self._ssh_key_var.set(prefs_mod.get(self._working, "git", "ssh_key", default=""))
@@ -506,6 +514,7 @@ class PrefsDialog:
     def _collect(self) -> None:
         """Lit tous les widgets → self._working."""
         prefs_mod.set_(self._working, "general", "username", value=self._username_var.get())
+        prefs_mod.set_(self._working, "general", "output_dir", value=self._output_dir_var.get())
         prefs_mod.set_(self._working, "general", "work_dir", value=self._workdir_var.get())
         prefs_mod.set_(self._working, "general", "log_file", value=self._logfile_var.get())
         prefs_mod.set_(self._working, "git", "ssh_key",        value=self._ssh_key_var.get())
