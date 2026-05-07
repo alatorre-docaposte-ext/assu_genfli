@@ -13,6 +13,10 @@ from typing import Callable
 
 import git
 
+from src.logger import get_logger
+
+_log = get_logger()
+
 
 # ---------------------------------------------------------------------------
 # Diff Git
@@ -24,14 +28,17 @@ def get_tags(repo_path: str, pattern: str = "") -> list[str]:
     Si pattern est fourni (ex: '*-beta1'), filtre par fnmatch.
     """
     import fnmatch
+    _log.debug("[git] get_tags  cwd=%s  pattern=%r", repo_path, pattern)
     try:
         repo = git.Repo(repo_path)
         tags_sorted = sorted(repo.tags, key=lambda t: t.commit.committed_date, reverse=True)
         names = [t.name for t in tags_sorted]
         if pattern:
             names = [n for n in names if fnmatch.fnmatch(n, pattern)]
+        _log.debug("[git] get_tags  → %d tag(s) found", len(names))
         return names
-    except (git.InvalidGitRepositoryError, git.GitCommandError, Exception):
+    except (git.InvalidGitRepositoryError, git.GitCommandError, Exception) as exc:
+        _log.warning("[git] get_tags  cwd=%s  error: %s", repo_path, exc)
         return []
 
 
@@ -39,6 +46,69 @@ def get_latest_beta1_tag(repo_path: str) -> str:
     """Retourne le tag le plus récent correspondant à *-beta1, ou '' si aucun."""
     tags = get_tags(repo_path, pattern="*-beta1")
     return tags[0] if tags else ""
+
+
+def get_last_fli_commit(repo_path: str, code: str, max_commits: int = 50) -> dict | None:
+    """
+    Parcourt les derniers commits (jusqu'à max_commits) et retourne le premier
+    dont le message correspond au pattern FLI_{code}_EXT_LIV_\\d+.
+
+    Retourne un dict {message, date (datetime), fli_id (int)} ou None.
+    """
+    import re
+    pattern = re.compile(rf"FLI_{re.escape(code.upper())}_EXT_LIV_(\d+)", re.IGNORECASE)
+    _log.debug("[git] get_last_fli_commit  cwd=%s  code=%s  max=%d", repo_path, code, max_commits)
+    try:
+        repo = git.Repo(repo_path)
+        for commit in repo.iter_commits(max_count=max_commits):
+            msg = commit.message.strip().split("\n")[0]
+            m = pattern.search(msg)
+            if m:
+                result = {
+                    "message": msg,
+                    "date":    datetime.datetime.fromtimestamp(commit.committed_date),
+                    "fli_id":  int(m.group(1)),
+                }
+                _log.info("[git] get_last_fli_commit  cwd=%s  → %s  (id=%d)",
+                          repo_path, msg, result["fli_id"])
+                return result
+    except (git.InvalidGitRepositoryError, git.GitCommandError, Exception) as exc:
+        _log.warning("[git] get_last_fli_commit  cwd=%s  error: %s", repo_path, exc)
+    _log.info("[git] get_last_fli_commit  cwd=%s  → no FLI commit found in last %d commits",
+              repo_path, max_commits)
+    return None
+
+
+def get_next_beta1_tag(repo_path: str) -> str:
+    """
+    Calcule le prochain tag -beta1 à partir du dernier tag de version connu.
+
+    Stratégie :
+      1. Cherche le dernier tag *-beta1  → extrait vMAJ.MIN.PATCH  → propose vMAJ.MIN.(PATCH+1)-beta1
+      2. Si absent, cherche le dernier tag vMAJ.MIN.PATCH (sans suffixe) et fait pareil.
+      3. Si rien trouvé, retourne ''.
+
+    Exemples :
+      v1.2.93-beta1  → v1.2.94-beta1
+      v1.2.93        → v1.2.94-beta1
+    """
+    import re
+    ver_re = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-beta1)?$")
+
+    def _parse(tag_name: str):
+        m = ver_re.match(tag_name)
+        return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+    all_tags = get_tags(repo_path)          # triés par date desc
+    for name in all_tags:
+        parts = _parse(name)
+        if parts:
+            maj, min_, patch = parts
+            result = f"v{maj}.{min_}.{patch + 1}-beta1"
+            _log.info("[git] get_next_beta1_tag  cwd=%s  last=%s  → %s", repo_path, name, result)
+            return result
+    _log.info("[git] get_next_beta1_tag  cwd=%s  → no versioned tag found", repo_path)
+    return ""
 
 
 def get_all_files_at_tag(repo_path: str, tag: str) -> list[str]:
