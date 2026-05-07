@@ -57,6 +57,9 @@ _DEFAULTS: dict = {
     "project_dialog": {
         "geometry": "",
     },
+    "db": {
+        "db_path": "",
+    },
 }
 
 

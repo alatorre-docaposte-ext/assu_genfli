@@ -13,6 +13,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
 from src import preferences as prefs_mod
+from src import db as db_mod
 from src.project_dialog import ProjectDialog
 from src.git_sync_dialog import GitSyncDialog
 
@@ -64,6 +65,7 @@ class PrefsDialog:
         self._tab_git(nb)
         self._tab_sftp(nb)
         self._tab_livraison(nb)
+        self._tab_db(nb)
 
         # Boutons bas de page
         btn_frame = ttk.Frame(win)
@@ -334,6 +336,74 @@ class PrefsDialog:
         self._pwd_entry.config(show="" if self._pwd_visible else "●")
 
     # ------------------------------------------------------------------
+    # Onglet DB
+    # ------------------------------------------------------------------
+
+    def _tab_db(self, nb: ttk.Notebook) -> None:
+        from src.routing_dialog import RoutingDialog
+
+        f = ttk.Frame(nb, padding=15)
+        nb.add(f, text="DB")
+        f.columnconfigure(1, weight=1)
+
+        ttk.Label(f, text="Fichier de base de données :").grid(
+            row=0, column=0, sticky="e", padx=(0, 8), pady=8
+        )
+        self._db_path_var = tk.StringVar(
+            value=prefs_mod.get(self._working, "db", "db_path", default="")
+        )
+        ttk.Entry(f, textvariable=self._db_path_var).grid(
+            row=0, column=1, sticky="ew", pady=8
+        )
+        ttk.Button(
+            f, text="Browse…",
+            command=lambda: self._browse_save(
+                self._db_path_var,
+                [("Base SQLite", "*.db *.sqlite *.sqlite3"), ("Tous", "*.*")],
+            ),
+        ).grid(row=0, column=2, padx=(4, 0), pady=8)
+
+        ttk.Label(
+            f,
+            text="La base stocke les règles de routage (quel fichier va dans quel dépôt).",
+            foreground="gray",
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(0, 12))
+
+        ttk.Separator(f, orient="horizontal").grid(
+            row=2, column=0, columnspan=3, sticky="ew", pady=(0, 12)
+        )
+
+        def _open_routing():
+            # Appliquer le chemin saisi avant d'ouvrir la boîte de dialogue
+            db_path = self._db_path_var.get().strip()
+            if not db_path:
+                from tkinter import messagebox as _mb
+                _mb.showwarning(
+                    "Base de données",
+                    "Configurez d'abord le chemin du fichier de base de données.",
+                    parent=self._win,
+                )
+                return
+            import os as _os
+            if not _os.path.isfile(db_path):
+                db_mod.open_db(db_path)
+            elif db_mod.get_db() is None:
+                db_mod.open_db(db_path)
+            RoutingDialog(self._win, self._prefs)
+
+        ttk.Button(
+            f, text="Gérer les règles de routage…", command=_open_routing
+        ).grid(row=3, column=0, columnspan=3, sticky="w")
+
+        ttk.Label(
+            f,
+            text="Définissez les motifs glob qui déterminent la cible de chaque fichier\n"
+                 "(WFD | RESS | BOTH | NONE).",
+            foreground="gray",
+            justify="left",
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
+    # ------------------------------------------------------------------
     # Browse helpers
     # ------------------------------------------------------------------
 
@@ -459,6 +529,8 @@ class PrefsDialog:
         prefs_mod.set_(self._working, "livraison", "destinataire", "reception_par", value=self._dest_reception_var.get())
         prefs_mod.set_(self._working, "livraison", "emettrice",    "livreur", value=self._em_reception_var.get())
         prefs_mod.set_(self._working, "sftp", "port", value=port)
+        # DB
+        prefs_mod.set_(self._working, "db", "db_path", value=self._db_path_var.get())
 
     def _apply(self) -> None:
         self._collect()

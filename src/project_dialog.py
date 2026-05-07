@@ -21,8 +21,10 @@ _FIELDS = [
     ("depot_wfd_distant",  "Dépôt WFD distant :",  "https://github.com/org/wfd.git",   False),
     ("depot_ress_local",   "Dépôt RESS local :",   "/chemin/du/dépôt/RESS",           True),
     ("depot_ress_distant", "Dépôt RESS distant :",  "https://github.com/org/ress.git",  False),
-    ("depot_dev",          "Dépôt DEV local :",    "/chemin/du/dépôt/DEV",            True),
-    ("depot_dev_distant",  "Dépôt DEV distant :",  "https://github.com/org/dev.git",   False),
+    ("depot_dev",           "Dépôt DEV local :",    "/chemin/du/dépôt/DEV",             True),
+    ("depot_dev_distant",   "Dépôt DEV distant :",  "https://github.com/org/dev.git",   False),
+    ("depot_commun_local",  "Dépôt COMMUN local :", "/chemin/du/dépôt/COMMUN",          True),
+    ("depot_commun_distant","Dépôt COMMUN distant :","https://github.com/org/commun.git",False),
 ]
 
 

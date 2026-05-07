@@ -9,6 +9,7 @@ from src.screens.screen1_project import Screen1Project
 from src.screens.screen2_delivery import Screen2Delivery
 from src.screens.screen3_files import Screen3Files
 from src import preferences as prefs_mod
+from src import db as db_mod
 
 
 def main():
@@ -17,11 +18,22 @@ def main():
     log = get_logger()
     prefs = prefs_mod.load()
 
+    # --- Base de données ---
+    db_path = prefs_mod.get(prefs, "db", "db_path", default="")
+    if db_path:
+        try:
+            db_mod.open_db(db_path)
+        except Exception as _e:
+            pass  # DB non critique au démarrage ; signalé dans les préférences
+
     # --- Fenêtre principale ---
     root = tk.Tk()
     root.title("assu_genfli")
     root.minsize(640, 480)
     root.geometry(prefs_mod.get(prefs, "main_window", "geometry", default="800x560"))
+    if prefs_mod.get(prefs, "main_window", "state", default="normal") == "zoomed":
+        root.update_idletasks()
+        root.state("zoomed")
 
     root.columnconfigure(0, weight=1)
     root.rowconfigure(0, weight=1)
@@ -37,7 +49,15 @@ def main():
     menubar.add_cascade(label="Fichier", menu=menu_fichier)
 
     def open_prefs():
-        PrefsDialog(root, prefs, on_apply=lambda _p: wizard.reload_current())
+        def on_apply(_p):
+            new_db_path = prefs_mod.get(_p, "db", "db_path", default="")
+            if new_db_path:
+                try:
+                    db_mod.open_db(new_db_path)
+                except Exception:
+                    pass
+            wizard.reload_current()
+        PrefsDialog(root, prefs, on_apply=on_apply)
 
     menu_fichier.add_command(label="Préférences", command=open_prefs)
     menu_fichier.add_separator()
@@ -79,10 +99,12 @@ def main():
     def on_close():
         log.info("Application fermée.")
         prefs_mod.set_(prefs, "main_window", "geometry", value=root.geometry())
+        prefs_mod.set_(prefs, "main_window", "state", value=root.state())
         prefs_mod.set_(prefs, "log_window", "visible", value=log_window.is_visible())
         if log_window.is_visible():
             log_window._save_geometry()
         prefs_mod.save(prefs)
+        db_mod.close_db()
         root.destroy()
 
     root.protocol("WM_DELETE_WINDOW", on_close)

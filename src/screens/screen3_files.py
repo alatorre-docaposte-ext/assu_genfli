@@ -18,6 +18,7 @@ from tkinter import ttk, simpledialog
 
 from src import git_ops
 from src import preferences as prefs_mod
+from src import db as db_mod
 from src.logger import get_logger
 
 log = get_logger()
@@ -82,7 +83,7 @@ class Screen3Files:
 
         self._tree = ttk.Treeview(
             tree_frame,
-            columns=("check", "status", "path", "source"),
+            columns=("check", "status", "path", "source", "cible"),
             show="headings",
             selectmode="browse",
         )
@@ -90,11 +91,13 @@ class Screen3Files:
         self._tree.heading("status", text="Statut",  anchor="center")
         self._tree.heading("path",   text="Fichier",  anchor="w")
         self._tree.heading("source", text="Dépôt",   anchor="center")
+        self._tree.heading("cible",  text="Cible",   anchor="center")
 
         self._tree.column("check",  width=30,  minwidth=30,  stretch=False, anchor="center")
         self._tree.column("status", width=95,  minwidth=70,  stretch=False, anchor="center")
-        self._tree.column("path",   width=480, minwidth=200, stretch=True,  anchor="w")
-        self._tree.column("source", width=70,  minwidth=60,  stretch=False, anchor="center")
+        self._tree.column("path",   width=420, minwidth=200, stretch=True,  anchor="w")
+        self._tree.column("source", width=60,  minwidth=50,  stretch=False, anchor="center")
+        self._tree.column("cible",  width=60,  minwidth=50,  stretch=False, anchor="center")
 
         vsb = ttk.Scrollbar(tree_frame, orient="vertical",   command=self._tree.yview)
         hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self._tree.xview)
@@ -111,6 +114,12 @@ class Screen3Files:
         self._tree.tag_configure("deleted",  foreground="#cc0000")
         self._tree.tag_configure("manual",   foreground="#886600")
         self._tree.tag_configure("unchecked",foreground="#aaaaaa")
+        # Couleurs cible (fond léger)
+        self._tree.tag_configure("cible_WFD",    background="#e8f0ff")
+        self._tree.tag_configure("cible_RESS",   background="#e8f5e8")
+        self._tree.tag_configure("cible_COMMUN", background="#f3e8ff")
+        self._tree.tag_configure("cible_BOTH",   background="#fff3e0")
+        self._tree.tag_configure("cible_NONE",   background="#f5f5f5")
 
         # --- Résumé bas de page ---
         self._summary_var = tk.StringVar(value="Aucun fichier")
@@ -212,11 +221,35 @@ class Screen3Files:
                 elif kind == "done":
                     total = len(self._files)
                     self._diff_status_var.set(f"Diff terminé — {total} fichier(s) trouvé(s)")
+                    self._resolve_cibles()
                     self._update_summary()
                     return
         except queue.Empty:
             pass
         self.frame.after(50, self._poll)
+
+    # ------------------------------------------------------------------
+    # Résolution des cibles (DB)
+    # ------------------------------------------------------------------
+
+    def _resolve_cibles(self) -> None:
+        conn = db_mod.get_db()
+        if conn is None:
+            return
+        project = prefs_mod.get(self._prefs, "session", "selected_project", default={})
+        code    = project.get("code", "")
+        if not code:
+            return
+        project_id = db_mod.get_project_id(conn, code)
+        if project_id is None:
+            return
+        paths   = [f["path"] for f in self._files]
+        targets = db_mod.resolve_targets_batch(conn, project_id, paths)
+        for f in self._files:
+            f["cible"] = targets.get(f["path"], "NONE")
+            if f["cible"] == "NONE":
+                f["checked"] = False
+        self._refresh_tree()
 
     # ------------------------------------------------------------------
     # Treeview
@@ -231,9 +264,10 @@ class Screen3Files:
             f      = self._files[i]
             if needle and needle not in f["path"].lower():
                 continue
-            chk    = _CHECKED if f["checked"] else _UNCHECKED
             label  = _STATUS_TEXT.get(f["status"], f["status"])
             source = f.get("source", "?")
+            cible  = f.get("cible", "")
+            chk    = "" if cible == "NONE" else (_CHECKED if f["checked"] else _UNCHECKED)
 
             if not f["checked"]:
                 tag = "unchecked"
@@ -242,9 +276,13 @@ class Screen3Files:
             else:
                 tag = {"A": "added", "M": "modified", "D": "deleted"}.get(f["status"], "modified")
 
+            tags = (tag,)
+            if cible in ("WFD", "RESS", "COMMUN", "BOTH", "NONE") and f["checked"]:
+                tags = (tag, f"cible_{cible}")
+
             self._tree.insert("", "end", iid=str(i),
-                              values=(chk, label, f["path"], source),
-                              tags=(tag,))
+                              values=(chk, label, f["path"], source, cible),
+                              tags=tags)
 
     def _on_click(self, event: tk.Event) -> None:
         if self._tree.identify_region(event.x, event.y) != "cell":
@@ -255,6 +293,8 @@ class Screen3Files:
         if not iid:
             return
         idx = int(iid)
+        if self._files[idx].get("cible") == "NONE":
+            return  # fichier exclu du routage — non sélectionnable
         self._files[idx]["checked"] = not self._files[idx]["checked"]
         self._refresh_tree()
         self._update_summary()
@@ -280,7 +320,8 @@ class Screen3Files:
 
     def _check_all(self) -> None:
         for f in self._files:
-            f["checked"] = True
+            if f.get("cible") != "NONE":
+                f["checked"] = True
         self._refresh_tree()
         self._update_summary()
 

@@ -59,11 +59,13 @@ class GitSyncDialog:
         p = self._project
         repos = []
         if p.get("depot_wfd_local") and p.get("depot_wfd_distant"):
-            repos.append(("WFD",  p["depot_wfd_local"],  p["depot_wfd_distant"]))
+            repos.append(("WFD",    p["depot_wfd_local"],     p["depot_wfd_distant"]))
         if p.get("depot_ress_local") and p.get("depot_ress_distant"):
-            repos.append(("RESS", p["depot_ress_local"], p["depot_ress_distant"]))
+            repos.append(("RESS",   p["depot_ress_local"],    p["depot_ress_distant"]))
         if p.get("depot_dev") and p.get("depot_dev_distant"):
-            repos.append(("DEV",  p["depot_dev"],        p["depot_dev_distant"]))
+            repos.append(("DEV",    p["depot_dev"],           p["depot_dev_distant"]))
+        if p.get("depot_commun_local") and p.get("depot_commun_distant"):
+            repos.append(("COMMUN", p["depot_commun_local"],  p["depot_commun_distant"]))
         return repos
 
     # ------------------------------------------------------------------
