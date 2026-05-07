@@ -6,8 +6,8 @@ from src.log_window import LogWindow
 from src.prefs_dialog import PrefsDialog
 from src.wizard import Wizard
 from src.screens.screen1_project import Screen1Project
-from src.screens.screen2_delivery import Screen2Delivery
-from src.screens.screen3_files import Screen3Files
+from src.screens.screen3_delivery import Screen3Delivery
+from src.screens.screen2_files import Screen2Files
 from src import preferences as prefs_mod
 from src import db as db_mod
 
@@ -86,8 +86,8 @@ def main():
     # --- Wizard ---
     wizard = Wizard(root, prefs)
     wizard.register(Screen1Project)
-    wizard.register(Screen3Files)
-    wizard.register(Screen2Delivery)
+    wizard.register(Screen2Files)
+    wizard.register(Screen3Delivery)
     wizard.start()
 
     # --- Restaurer état fenêtre de log ---

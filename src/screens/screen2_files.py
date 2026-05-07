@@ -1,5 +1,5 @@
 """
-screen3_files.py — Écran 3 : sélection des livrables.
+screen2_files.py — Écran 2 : sélection des livrables.
 
 Pipeline :
   1. À l'arrivée, calcule le diff Git dans un thread :
@@ -36,7 +36,7 @@ _STATUS_TEXT = {
 }
 
 
-class Screen3Files:
+class Screen2Files:
     title = "Sélection des livrables"
 
     def __init__(self, parent: ttk.Frame, wizard) -> None:

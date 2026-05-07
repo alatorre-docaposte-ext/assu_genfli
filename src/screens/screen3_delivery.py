@@ -1,5 +1,5 @@
 """
-screen2_delivery.py — Écran 2 : informations de livraison.
+screen3_delivery.py — Écran 3 : informations de livraison.
 
 Layout (fidèle à la maquette step2.png) :
 ┌─ Entité émettrice ───┐  ┌─ Entité destinataire ───────────┐
@@ -33,7 +33,7 @@ from src.widgets import DateEntry
 log = get_logger()
 
 
-class Screen2Delivery:
+class Screen3Delivery:
     title = "Informations de livraison"
 
     def __init__(self, parent: ttk.Frame, wizard) -> None:
