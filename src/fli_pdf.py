@@ -243,12 +243,12 @@ def generate_fli(
          Paragraph("Nom",                  S_HDR_WH),
          Paragraph("Date",                 S_HDR_WH),
          Paragraph("Visa",                 S_HDR_WH)],
-        [Paragraph("Livraison effectuée",  S_NORMAL),
+        [Paragraph("Livraison effectuée",  S_BOLD),
          Paragraph(em.get("nom", ""),      S_NORMAL),
          Paragraph(context.get("livreur", ""),   S_NORMAL),
          Paragraph(context.get("date_livraison", ""), S_NORMAL),
          Paragraph("",                     S_NORMAL)],
-        [Paragraph("Prise en compte", S_NORMAL),
+        [Paragraph("Prise en compte", S_BOLD),
          Paragraph(dest.get("nom", ""),    S_NORMAL),
          Paragraph(context.get("reception_par", ""), S_NORMAL),
          Paragraph("",                     S_NORMAL),
@@ -267,6 +267,8 @@ def generate_fli(
         ("TOPPADDING",    (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("BACKGROUND",    (0, 1), (0, -1), C_LGRAY),
+        ("FONTNAME",      (0, 1), (0, -1), "Helvetica-Bold"),
     ]))
     story.append(sig_t)
     story.append(Spacer(1, 3 * mm))
@@ -353,8 +355,11 @@ def generate_fli(
     # Stockage
     # -----------------------------------------------------------------------
     _log.debug("[generate_fli] section: stockage")
-    proj_raw  = context.get("project_name", "").lower().replace(" ", "_")
-    repo_lbl  = repo.lower()
+    depot_name = context.get(f"depot_{repo.lower()}") or ""
+    if not depot_name:
+        # fallback si l'URL distante n'est pas renseignée
+        proj_raw = context.get("project_name", "").lower().replace(" ", "_")
+        depot_name = f"{proj_raw}_{repo.lower()}"
     story.append(_simple_table(
         [
             [Paragraph("Nom de l'archive",          S_BOLD),
@@ -362,7 +367,7 @@ def generate_fli(
             [Paragraph("Nom du serveur de stockage", S_BOLD),
              Paragraph("Non applicable",             S_NORMAL)],
             [Paragraph("Répertoire de stockage",     S_BOLD),
-             Paragraph(f"Projet {proj_raw}_{repo_lbl} sous GIT", S_NORMAL)],
+             Paragraph(f"Projet {depot_name} sous GIT", S_NORMAL)],
         ],
         [0.35, 0.65],
     ))
@@ -392,6 +397,8 @@ def generate_fli(
         ("LEFTPADDING",   (0, 0), (-1, -1), 6),
         ("BACKGROUND",    (0, 0), (0, -1), C_LGRAY),
         ("FONTNAME",      (0, 0), (0, -1), "Helvetica-Bold"),
+        # Masquer les bordures horizontales internes de la colonne label (gris sur gris)
+        ("LINEBELOW",     (0, 0), (0, n_paths - 2), 0.5, C_LGRAY),
     ]
     id_t.setStyle(TableStyle(id_style))
     story.append(id_t)
@@ -409,6 +416,79 @@ def generate_fli(
         bottomMargin=MARGIN_V + 6 * mm,
     )
     doc.build(story, canvasmaker=_NumberedCanvas)
+
+
+# ---------------------------------------------------------------------------
+# JSON companion
+# ---------------------------------------------------------------------------
+def generate_fli_json(
+    output_path: str,
+    repo: str,
+    fli_id_str: str,
+    context: dict,
+    files: list[dict],
+) -> None:
+    """
+    Génère le fichier JSON accompagnateur d'une FLI.
+    Même structure que le PDF mais en données brutes.
+    """
+    import json
+
+    em   = context.get("emettrice",   {}) or {}
+    dest = context.get("destinataire", {}) or {}
+
+    depot_name = context.get(f"depot_{repo.lower()}") or ""
+    if not depot_name:
+        proj_raw   = context.get("project_name", "").lower().replace(" ", "_")
+        depot_name = f"{proj_raw}_{repo.lower()}"
+
+    data = {
+        "fli_id":          fli_id_str,
+        "depot":           depot_name,
+        "objet": {
+            "client":          em.get("client", ""),
+            "entite":          em.get("nom", ""),
+            "projet":          context.get("project_name", ""),
+            "date_reference":  context.get("date_reference", ""),
+            "mode_livraison":  em.get("mode", ""),
+        },
+        "signatures": {
+            "livraison": {
+                "entite": em.get("nom", ""),
+                "nom":    context.get("livreur", ""),
+                "date":   context.get("date_livraison", ""),
+            },
+            "prise_en_compte": {
+                "entite": dest.get("nom", ""),
+                "nom":    context.get("reception_par", ""),
+            },
+        },
+        "livraison": {
+            "objet_concerne":    "Logiciel",
+            "type_livraison":    "Evolution",
+            "version":           fli_id_str.split("_")[-1],
+            "titre":             fli_id_str,
+        },
+        "tag_git":  context.get(f"tag_{repo.lower()}") or "",
+        "stockage": {
+            "archive":          "Non applicable",
+            "serveur":          "Non applicable",
+            "repertoire":       f"Projet {depot_name} sous GIT",
+        },
+        "fichiers": [
+            {
+                "chemin":   f["path"],
+                "statut": f.get("status", ""),
+                "source": f.get("source", ""),
+                "cible":  f.get("cible", ""),
+            }
+            for f in files
+        ],
+    }
+
+    with open(output_path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
+    _log.info("[fli_pdf] JSON généré : %s", output_path)
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +510,13 @@ def build_context(prefs: dict, delivery: dict) -> dict:
 
     lv      = prefs.get("livraison", {})
     project = prefs.get("session", {}).get("selected_project", {})
+
+    def _depot_name(key: str) -> str:
+        """Extrait le nom du dépôt depuis l'URL distante (sans .git)."""
+        url = project.get(key, "") or ""
+        basename = url.rstrip("/").split("/")[-1]
+        return basename[:-4] if basename.endswith(".git") else basename
+
     return {
         "emettrice":      lv.get("emettrice",  {}) or {},
         "destinataire":   lv.get("destinataire", {}) or {},
@@ -441,4 +528,7 @@ def build_context(prefs: dict, delivery: dict) -> dict:
         "tag_wfd":        delivery.get("tag_wfd", "") or "",
         "tag_ress":       delivery.get("tag_ressources", "") or "",
         "tag_commun":     delivery.get("tag_commun", "") or "",
+        "depot_wfd":      _depot_name("depot_wfd_distant"),
+        "depot_ress":     _depot_name("depot_ress_distant"),
+        "depot_commun":   _depot_name("depot_commun_distant"),
     }

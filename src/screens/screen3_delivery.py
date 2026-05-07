@@ -451,7 +451,7 @@ class _DeliveryConfirmDialog:
         self._win.grab_set()
         self._win.transient(parent)
         self._win.resizable(True, False)
-        self._win.minsize(540, 0)
+        self._win.minsize(540, 30)
         self._win.columnconfigure(0, weight=1)
         self._win.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -574,8 +574,10 @@ class _DeliveryConfirmDialog:
         for repo, files in self._repo_files.items():
             fli_id_str = self._fli_ids[repo]
             out_path   = os.path.join(out_dir, f"{fli_id_str}.pdf")
+            json_path  = os.path.join(out_dir, f"{fli_id_str}.json")
             try:
                 fli_pdf.generate_fli(out_path, repo, fli_id_str, context, files)
+                fli_pdf.generate_fli_json(json_path, repo, fli_id_str, context, files)
                 generated.append(out_path)
                 self._log.info("[fli_pdf] Généré : %s  (%d fichiers)", out_path, len(files))
             except Exception as exc:
