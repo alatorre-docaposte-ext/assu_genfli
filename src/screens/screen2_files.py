@@ -83,21 +83,23 @@ class Screen2Files:
 
         self._tree = ttk.Treeview(
             tree_frame,
-            columns=("check", "status", "path", "source", "cible"),
+            columns=("check", "status", "path", "dest_path", "source", "cible"),
             show="headings",
             selectmode="browse",
         )
-        self._tree.heading("check",  text="")
-        self._tree.heading("status", text="Statut",  anchor="center")
-        self._tree.heading("path",   text="Fichier",  anchor="w")
-        self._tree.heading("source", text="Dépôt",   anchor="center")
-        self._tree.heading("cible",  text="Cible",   anchor="center")
+        self._tree.heading("check",     text="")
+        self._tree.heading("status",    text="Statut",             anchor="center")
+        self._tree.heading("path",      text="Fichier (DEV)",       anchor="w")
+        self._tree.heading("dest_path", text="Destination (intég)",  anchor="w")
+        self._tree.heading("source",    text="Dépôt",             anchor="center")
+        self._tree.heading("cible",     text="Cible",              anchor="center")
 
-        self._tree.column("check",  width=30,  minwidth=30,  stretch=False, anchor="center")
-        self._tree.column("status", width=95,  minwidth=70,  stretch=False, anchor="center")
-        self._tree.column("path",   width=420, minwidth=200, stretch=True,  anchor="w")
-        self._tree.column("source", width=60,  minwidth=50,  stretch=False, anchor="center")
-        self._tree.column("cible",  width=60,  minwidth=50,  stretch=False, anchor="center")
+        self._tree.column("check",     width=30,  minwidth=30,  stretch=False, anchor="center")
+        self._tree.column("status",    width=95,  minwidth=70,  stretch=False, anchor="center")
+        self._tree.column("path",      width=300, minwidth=150, stretch=True,  anchor="w")
+        self._tree.column("dest_path", width=260, minwidth=120, stretch=True,  anchor="w")
+        self._tree.column("source",    width=60,  minwidth=50,  stretch=False, anchor="center")
+        self._tree.column("cible",     width=60,  minwidth=50,  stretch=False, anchor="center")
 
         vsb = ttk.Scrollbar(tree_frame, orient="vertical",   command=self._tree.yview)
         hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self._tree.xview)
@@ -244,9 +246,11 @@ class Screen2Files:
         if project_id is None:
             return
         paths   = [f["path"] for f in self._files]
-        targets = db_mod.resolve_targets_batch(conn, project_id, paths)
+        routing = db_mod.resolve_routing_batch(conn, project_id, paths)
         for f in self._files:
-            f["cible"] = targets.get(f["path"], "NONE")
+            target, dest_path = routing.get(f["path"], ("NONE", f["path"]))
+            f["cible"]     = target
+            f["dest_path"] = dest_path
             if f["cible"] == "NONE":
                 f["checked"] = False
         self._refresh_tree()
@@ -261,13 +265,17 @@ class Screen2Files:
         # Fichiers cochés en premier, puis non cochés — ordre stable à l'intérieur de chaque groupe
         ordered = sorted(range(len(self._files)), key=lambda i: (not self._files[i]["checked"], self._files[i]["path"]))
         for i in ordered:
-            f      = self._files[i]
-            if needle and needle not in f["path"].lower():
+            f         = self._files[i]
+            dest_path = f.get("dest_path") or f["path"]
+            if needle and needle not in f["path"].lower() and needle not in dest_path.lower():
                 continue
             label  = _STATUS_TEXT.get(f["status"], f["status"])
             source = f.get("source", "?")
             cible  = f.get("cible", "")
             chk    = "" if cible == "NONE" else (_CHECKED if f["checked"] else _UNCHECKED)
+
+            # Mettre en évidence si le chemin destination diffère du source
+            dest_display = dest_path if dest_path != f["path"] else ""
 
             if not f["checked"]:
                 tag = "unchecked"
@@ -281,7 +289,7 @@ class Screen2Files:
                 tags = (tag, f"cible_{cible}")
 
             self._tree.insert("", "end", iid=str(i),
-                              values=(chk, label, f["path"], source, cible),
+                              values=(chk, label, f["path"], dest_display, source, cible),
                               tags=tags)
 
     def _on_click(self, event: tk.Event) -> None:

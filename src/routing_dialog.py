@@ -114,14 +114,16 @@ class RoutingDialog:
         parent.rowconfigure(0, weight=1)
 
         # Treeview
-        cols = ("pattern", "target", "priority")
+        cols = ("pattern", "target", "strip_prefix", "priority")
         self._rules_tree = ttk.Treeview(parent, columns=cols, show="headings", height=10)
-        self._rules_tree.heading("pattern",  text="Motif (glob)")
-        self._rules_tree.heading("target",   text="Cible",    anchor="center")
-        self._rules_tree.heading("priority", text="Priorité", anchor="center")
-        self._rules_tree.column("pattern",  width=380, stretch=True)
-        self._rules_tree.column("target",   width=80,  stretch=False, anchor="center")
-        self._rules_tree.column("priority", width=70,  stretch=False, anchor="center")
+        self._rules_tree.heading("pattern",      text="Motif (glob)")
+        self._rules_tree.heading("target",       text="Cible",              anchor="center")
+        self._rules_tree.heading("strip_prefix", text="Retirer le préfixe", anchor="w")
+        self._rules_tree.heading("priority",     text="Priorité",           anchor="center")
+        self._rules_tree.column("pattern",      width=250, stretch=True)
+        self._rules_tree.column("target",       width=70,  stretch=False, anchor="center")
+        self._rules_tree.column("strip_prefix", width=200, stretch=True,  anchor="w")
+        self._rules_tree.column("priority",     width=60,  stretch=False, anchor="center")
 
         vsb = ttk.Scrollbar(parent, orient="vertical", command=self._rules_tree.yview)
         self._rules_tree.configure(yscrollcommand=vsb.set)
@@ -155,12 +157,14 @@ class RoutingDialog:
         parent.columnconfigure(0, weight=1)
         parent.rowconfigure(0, weight=1)
 
-        cols = ("path", "target")
+        cols = ("path", "target", "dest_path")
         self._files_tree = ttk.Treeview(parent, columns=cols, show="headings", height=10)
-        self._files_tree.heading("path",   text="Chemin (exact)")
-        self._files_tree.heading("target", text="Cible", anchor="center")
-        self._files_tree.column("path",   width=450, stretch=True)
-        self._files_tree.column("target", width=80,  stretch=False, anchor="center")
+        self._files_tree.heading("path",      text="Chemin source (exact)")
+        self._files_tree.heading("target",    text="Cible",            anchor="center")
+        self._files_tree.heading("dest_path", text="Chemin destination", anchor="w")
+        self._files_tree.column("path",      width=260, stretch=True)
+        self._files_tree.column("target",    width=70,  stretch=False, anchor="center")
+        self._files_tree.column("dest_path", width=220, stretch=True,  anchor="w")
 
         vsb = ttk.Scrollbar(parent, orient="vertical", command=self._files_tree.yview)
         self._files_tree.configure(yscrollcommand=vsb.set)
@@ -211,7 +215,8 @@ class RoutingDialog:
         for rule in db_mod.list_rules(self._conn, self._project_id):
             self._rules_tree.insert(
                 "", "end", iid=str(rule["id"]),
-                values=(rule["pattern"], rule["target"], rule["priority"]),
+                values=(rule["pattern"], rule["target"],
+                        rule["strip_prefix"] or "", rule["priority"]),
                 tags=(rule["target"],),
             )
 
@@ -222,7 +227,7 @@ class RoutingDialog:
         for fr in db_mod.list_file_routes(self._conn, self._project_id):
             self._files_tree.insert(
                 "", "end", iid=str(fr["id"]),
-                values=(fr["path"], fr["target"]),
+                values=(fr["path"], fr["target"], fr["dest_path"] or ""),
                 tags=(fr["target"],),
             )
 
@@ -249,7 +254,12 @@ class RoutingDialog:
         if not sel:
             return
         vals = self._rules_tree.item(sel[0])["values"]
-        dlg = _RuleDialog(self._win, data={"pattern": vals[0], "target": vals[1], "priority": int(vals[2])}, prefs=self._prefs)
+        dlg = _RuleDialog(self._win, data={
+            "pattern":      vals[0],
+            "target":       vals[1],
+            "strip_prefix": vals[2],
+            "priority":     int(vals[3]),
+        }, prefs=self._prefs)
         if dlg.result:
             db_mod.update_rule(self._conn, int(sel[0]), **dlg.result)
             self._reload_rules()
@@ -278,7 +288,8 @@ class RoutingDialog:
         dlg = _FileRouteDialog(self._win, prefs=self._prefs)
         if dlg.result:
             db_mod.set_file_route(self._conn, self._project_id,
-                                  dlg.result["path"], dlg.result["target"])
+                                  dlg.result["path"], dlg.result["target"],
+                                  dest_path=dlg.result.get("dest_path", ""))
             self._reload_files()
 
     def _delete_file_route(self) -> None:
@@ -324,18 +335,27 @@ class _RuleDialog:
                      values=list(db_mod.TARGETS), state="readonly", width=10,
                      ).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=8)
 
-        ttk.Label(self._win, text="Priorité :").grid(row=2, column=0, sticky="e", padx=(10, 6), pady=8)
+        ttk.Label(self._win, text="Préfixe à retirer :").grid(row=2, column=0, sticky="e", padx=(10, 6), pady=8)
+        self._strip_var = tk.StringVar(value=data.get("strip_prefix", ""))
+        ttk.Entry(self._win, textvariable=self._strip_var, width=40).grid(
+            row=2, column=1, columnspan=2, padx=(0, 10), pady=8, sticky="ew"
+        )
+        ttk.Label(self._win, text="Préfixe retiré du chemin DEV pour former le chemin dans le dépôt cible.",
+                  foreground="gray").grid(row=3, column=0, columnspan=3,
+                                          sticky="w", padx=10, pady=(0, 2))
+
+        ttk.Label(self._win, text="Priorité :").grid(row=4, column=0, sticky="e", padx=(10, 6), pady=8)
         self._prio_var = tk.StringVar(value=str(data.get("priority", 0)))
         ttk.Entry(self._win, textvariable=self._prio_var, width=8).grid(
-            row=2, column=1, sticky="w", padx=(0, 10), pady=8
+            row=4, column=1, sticky="w", padx=(0, 10), pady=8
         )
 
-        ttk.Label(self._win, text="Exemples : **/*.xsl  |  resources/**  |  *.cfg",
-                  foreground="gray").grid(row=3, column=0, columnspan=3,
+        ttk.Label(self._win, text="Ex. motif : COMMUN/WFD/**   strip : COMMUN/WFD/   cible : COMMUN",
+                  foreground="gray").grid(row=5, column=0, columnspan=3,
                                           sticky="w", padx=10, pady=(0, 6))
 
         bf = ttk.Frame(self._win)
-        bf.grid(row=4, column=0, columnspan=3, sticky="e", padx=10, pady=(0, 10))
+        bf.grid(row=6, column=0, columnspan=3, sticky="e", padx=10, pady=(0, 10))
         ttk.Button(bf, text="OK",      width=10, command=self._ok).pack(side="left", padx=4)
         ttk.Button(bf, text="Annuler", width=10, command=self._close).pack(side="left", padx=4)
 
@@ -360,9 +380,10 @@ class _RuleDialog:
         except ValueError:
             priority = 0
         self.result = {
-            "pattern":  pattern,
-            "target":   self._target_var.get(),
-            "priority": priority,
+            "pattern":      pattern,
+            "target":       self._target_var.get(),
+            "strip_prefix": self._strip_var.get().strip(),
+            "priority":     priority,
         }
         self._close()
 
@@ -394,12 +415,17 @@ class _FileRouteDialog:
                      values=list(db_mod.TARGETS), state="readonly", width=10,
                      ).grid(row=1, column=1, sticky="w", padx=(0, 10), pady=8)
 
-        ttk.Label(self._win, text="Chemin relatif au dépôt DEV (séparateurs /).",
-                  foreground="gray").grid(row=2, column=0, columnspan=2,
+        ttk.Label(self._win, text="Chemin destination :").grid(row=2, column=0, sticky="e", padx=(10, 6), pady=8)
+        self._dest_var = tk.StringVar(value=data.get("dest_path", ""))
+        ttk.Entry(self._win, textvariable=self._dest_var, width=40).grid(
+            row=2, column=1, padx=(0, 10), pady=8, sticky="ew"
+        )
+        ttk.Label(self._win, text="Chemin dans le dépôt cible (vide = même que source).",
+                  foreground="gray").grid(row=3, column=0, columnspan=2,
                                           sticky="w", padx=10, pady=(0, 6))
 
         bf = ttk.Frame(self._win)
-        bf.grid(row=3, column=0, columnspan=2, sticky="e", padx=10, pady=(0, 10))
+        bf.grid(row=4, column=0, columnspan=2, sticky="e", padx=10, pady=(0, 10))
         ttk.Button(bf, text="OK",      width=10, command=self._ok).pack(side="left", padx=4)
         ttk.Button(bf, text="Annuler", width=10, command=self._close).pack(side="left", padx=4)
 
@@ -419,5 +445,9 @@ class _FileRouteDialog:
         path = self._path_var.get().strip().replace("\\", "/")
         if not path:
             return
-        self.result = {"path": path, "target": self._target_var.get()}
+        self.result = {
+            "path":      path,
+            "target":    self._target_var.get(),
+            "dest_path": self._dest_var.get().strip().replace("\\", "/"),
+        }
         self._close()

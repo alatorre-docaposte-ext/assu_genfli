@@ -4,3 +4,5 @@ __pycache__
 *.pyc
 *.png
 *.mp4
+list.csv
+seed_routing_rules.py

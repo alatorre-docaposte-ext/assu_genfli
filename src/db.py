@@ -22,7 +22,7 @@ from pathlib import Path
 TARGETS: tuple[str, ...] = ("WFD", "RESS", "COMMUN", "BOTH", "NONE")
 
 # Current schema version — bump when DDL changes.
-_SCHEMA_VERSION = 2
+_SCHEMA_VERSION = 3
 
 _DDL = """
 PRAGMA foreign_keys = ON;
@@ -78,6 +78,16 @@ INSERT INTO file_routes SELECT * FROM _file_routes_old;
 DROP TABLE _file_routes_old;
 """
 
+_MIGRATION_V3 = """
+-- Ajoute strip_prefix sur routing_rules : préfixe à retirer du chemin DEV
+-- pour calculer le chemin de destination dans le dépôt d'intégration.
+ALTER TABLE routing_rules ADD COLUMN strip_prefix TEXT NOT NULL DEFAULT '';
+
+-- Ajoute dest_path sur file_routes : chemin explicite dans le dépôt cible
+-- (vide = même chemin que la source normalisée).
+ALTER TABLE file_routes ADD COLUMN dest_path TEXT NOT NULL DEFAULT '';
+"""
+
 # ---------------------------------------------------------------------------
 # Connexion module-level (singleton desktop)
 # ---------------------------------------------------------------------------
@@ -105,6 +115,10 @@ def open_db(path: str) -> sqlite3.Connection:
     current_version = _conn.execute("PRAGMA user_version").fetchone()[0]
     if current_version < 2:
         _conn.executescript(_MIGRATION_V2)
+        _conn.execute("PRAGMA user_version = 2")
+        _conn.commit()
+    if current_version < 3:
+        _conn.executescript(_MIGRATION_V3)
         _conn.execute(f"PRAGMA user_version = {_SCHEMA_VERSION}")
         _conn.commit()
 
@@ -164,21 +178,26 @@ def list_rules(conn: sqlite3.Connection, project_id: int) -> list[sqlite3.Row]:
 
 
 def add_rule(conn: sqlite3.Connection, project_id: int,
-             pattern: str, target: str, priority: int = 0) -> None:
+             pattern: str, target: str, priority: int = 0,
+             strip_prefix: str = "") -> None:
     conn.execute(
-        "INSERT INTO routing_rules (project_id, pattern, target, priority) VALUES (?, ?, ?, ?)"
+        "INSERT INTO routing_rules (project_id, pattern, target, priority, strip_prefix)"
+        " VALUES (?, ?, ?, ?, ?)"
         " ON CONFLICT(project_id, pattern)"
-        "   DO UPDATE SET target = excluded.target, priority = excluded.priority",
-        (project_id, pattern, target, priority),
+        "   DO UPDATE SET target = excluded.target, priority = excluded.priority,"
+        "                 strip_prefix = excluded.strip_prefix",
+        (project_id, pattern, target, priority, strip_prefix),
     )
     conn.commit()
 
 
 def update_rule(conn: sqlite3.Connection, rule_id: int,
-                pattern: str, target: str, priority: int) -> None:
+                pattern: str, target: str, priority: int,
+                strip_prefix: str = "") -> None:
     conn.execute(
-        "UPDATE routing_rules SET pattern = ?, target = ?, priority = ? WHERE id = ?",
-        (pattern, target, priority, rule_id),
+        "UPDATE routing_rules SET pattern = ?, target = ?, priority = ?, strip_prefix = ?"
+        " WHERE id = ?",
+        (pattern, target, priority, strip_prefix, rule_id),
     )
     conn.commit()
 
@@ -200,11 +219,12 @@ def list_file_routes(conn: sqlite3.Connection, project_id: int) -> list[sqlite3.
 
 
 def set_file_route(conn: sqlite3.Connection, project_id: int,
-                   path: str, target: str) -> None:
+                   path: str, target: str, dest_path: str = "") -> None:
     conn.execute(
-        "INSERT INTO file_routes (project_id, path, target) VALUES (?, ?, ?)"
-        " ON CONFLICT(project_id, path) DO UPDATE SET target = excluded.target",
-        (project_id, path, target),
+        "INSERT INTO file_routes (project_id, path, target, dest_path) VALUES (?, ?, ?, ?)"
+        " ON CONFLICT(project_id, path)"
+        "   DO UPDATE SET target = excluded.target, dest_path = excluded.dest_path",
+        (project_id, path, target, dest_path),
     )
     conn.commit()
 
@@ -218,8 +238,15 @@ def delete_file_route(conn: sqlite3.Connection, project_id: int, path: str) -> N
 
 
 # ---------------------------------------------------------------------------
-# Résolution de cible
+# Résolution de cible + chemin destination
 # ---------------------------------------------------------------------------
+
+def _apply_strip_prefix(path: str, strip_prefix: str) -> str:
+    """Retire strip_prefix du chemin pour obtenir le chemin dans le dépôt cible."""
+    if strip_prefix and path.startswith(strip_prefix):
+        return path[len(strip_prefix):]
+    return path
+
 
 def resolve_target(conn: sqlite3.Connection, project_id: int, path: str) -> str:
     """
@@ -228,7 +255,6 @@ def resolve_target(conn: sqlite3.Connection, project_id: int, path: str) -> str:
     """
     norm = path.replace("\\", "/")
 
-    # 1. Surcharge par fichier exact
     row = conn.execute(
         "SELECT target FROM file_routes WHERE project_id = ? AND path = ?",
         (project_id, norm),
@@ -236,7 +262,6 @@ def resolve_target(conn: sqlite3.Connection, project_id: int, path: str) -> str:
     if row:
         return row["target"]
 
-    # 2. Règles glob (déjà triées priority DESC, id ASC)
     for rule in list_rules(conn, project_id):
         if fnmatch.fnmatch(norm, rule["pattern"]):
             return rule["target"]
@@ -244,26 +269,67 @@ def resolve_target(conn: sqlite3.Connection, project_id: int, path: str) -> str:
     return "NONE"
 
 
+def resolve_routing(conn: sqlite3.Connection,
+                    project_id: int, path: str) -> tuple[str, str]:
+    """
+    Retourne (target, dest_path) pour un chemin donné.
+
+    dest_path est le chemin à utiliser dans le dépôt d'intégration :
+      - Pour une surcharge file_routes : dest_path explicite si renseigné,
+        sinon le chemin normalisé.
+      - Pour une règle glob : path après retrait du strip_prefix.
+    """
+    norm = path.replace("\\", "/")
+
+    row = conn.execute(
+        "SELECT target, dest_path FROM file_routes WHERE project_id = ? AND path = ?",
+        (project_id, norm),
+    ).fetchone()
+    if row:
+        dest = row["dest_path"] if row["dest_path"] else norm
+        return row["target"], dest
+
+    for rule in list_rules(conn, project_id):
+        if fnmatch.fnmatch(norm, rule["pattern"]):
+            dest = _apply_strip_prefix(norm, rule["strip_prefix"] or "")
+            return rule["target"], dest
+
+    return "NONE", norm
+
+
 def resolve_targets_batch(conn: sqlite3.Connection,
                           project_id: int,
                           paths: list[str]) -> dict[str, str]:
-    """Résout les cibles pour une liste de chemins en une seule passe."""
-    overrides = {
-        row["path"]: row["target"]
+    """Résout uniquement les cibles (rétrocompatibilité). Préférer resolve_routing_batch."""
+    return {p: t for p, (t, _) in resolve_routing_batch(conn, project_id, paths).items()}
+
+
+def resolve_routing_batch(conn: sqlite3.Connection,
+                          project_id: int,
+                          paths: list[str]) -> dict[str, tuple[str, str]]:
+    """
+    Résout (target, dest_path) pour une liste de chemins en une seule passe.
+
+    Retourne dict[src_path] = (target, dest_path).
+    """
+    overrides: dict[str, tuple[str, str]] = {
+        row["path"]: (row["target"], row["dest_path"] if row["dest_path"] else row["path"])
         for row in list_file_routes(conn, project_id)
     }
     rules = list_rules(conn, project_id)
 
-    result: dict[str, str] = {}
+    result: dict[str, tuple[str, str]] = {}
     for path in paths:
         norm = path.replace("\\", "/")
         if norm in overrides:
             result[path] = overrides[norm]
             continue
-        matched = "NONE"
+        matched_target = "NONE"
+        matched_dest   = norm
         for rule in rules:
             if fnmatch.fnmatch(norm, rule["pattern"]):
-                matched = rule["target"]
+                matched_target = rule["target"]
+                matched_dest   = _apply_strip_prefix(norm, rule["strip_prefix"] or "")
                 break
-        result[path] = matched
+        result[path] = (matched_target, matched_dest)
     return result

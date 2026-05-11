@@ -67,6 +67,7 @@ S_TITLE    = _ps("ti",  fontName="Helvetica-Bold", fontSize=15, leading=20,
 S_HDR_WH   = _ps("hw",  fontName="Helvetica-Bold", textColor=C_WHITE)
 S_SMALL    = _ps("sm",  fontSize=6,  leading=8)
 S_FOOTER   = _ps("ft",  fontSize=6,  leading=8, textColor=C_FOOTER)
+S_GRAY     = _ps("gr",  fontSize=7,  leading=9, textColor=C_FOOTER)
 
 # Checkbox symbols — inline images dans les Paragraphs
 _ASSETS = os.path.join(os.path.dirname(__file__), "assets")
@@ -328,8 +329,9 @@ def generate_fli(
                Paragraph("Descriptif", S_HDR_WH)]]
     wf_rows = []
     for f in files:
-        basename = os.path.basename(f["path"])
-        wf_rows.append([Paragraph(basename, S_NORMAL),
+        src  = f["path"]
+        dest = f.get("dest_path") or src
+        wf_rows.append([Paragraph(dest, S_NORMAL),
                         Paragraph("",       S_NORMAL),
                         Paragraph("",       S_NORMAL)])
 
@@ -383,7 +385,9 @@ def generate_fli(
     id_data = []
     for i, f in enumerate(files):
         label_cell = Paragraph("Référence des objets livrés", S_BOLD) if i == 0 else ""
-        id_data.append([label_cell, Paragraph(f["path"], S_NORMAL)])
+        src  = f["path"]
+        dest = f.get("dest_path") or src
+        id_data.append([label_cell, Paragraph(dest, S_NORMAL)])
     id_data.append([Paragraph("Tag Git", S_BOLD), Paragraph(tag, S_BOLD)])
 
     id_t = Table(id_data, colWidths=[INNER_W * 0.30, INNER_W * 0.70],
@@ -477,10 +481,11 @@ def generate_fli_json(
         },
         "fichiers": [
             {
-                "chemin":   f["path"],
+                "chemin_dev":  f["path"],
+                "chemin_dest": f.get("dest_path") or f["path"],
                 "statut": f.get("status", ""),
                 "source": f.get("source", ""),
-                "cible":  f.get("cible", ""),
+                "cible":  f.get("cible",  ""),
             }
             for f in files
         ],
