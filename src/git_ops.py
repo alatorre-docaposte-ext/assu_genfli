@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import datetime
 import os
+import shutil
 import tempfile
 from typing import Callable
 
@@ -394,3 +395,124 @@ def sync_repo(
                 os.unlink(askpass_path)
             except OSError:
                 pass
+
+
+# ---------------------------------------------------------------------------
+# Livraison : copie fichiers + commit + tag (+ push optionnel)
+# ---------------------------------------------------------------------------
+
+def copy_and_deliver(
+    src_root: str,
+    dest_root: str,
+    files: list[dict],
+    commit_message: str,
+    tag: str,
+    conn_method: str,
+    prefs: dict,
+    on_progress: Callable[[str], None],
+    push: bool = False,
+    remote_url: str = "",
+    passphrase: str = "",
+) -> bool:
+    """
+    Copie les fichiers de src_root vers dest_root selon leur dest_path,
+    puis commit + tag dans dest_root, et push optionnel.
+
+    files : [{path: chemin_relatif_dans_src_root,
+              dest_path: chemin_relatif_dans_dest_root}]
+    Retourne True si aucune erreur, False sinon.
+    """
+    if not dest_root or not os.path.isdir(dest_root):
+        on_progress(f"  ✘ Répertoire destination introuvable : {dest_root!r}")
+        return False
+    if not src_root or not os.path.isdir(src_root):
+        on_progress(f"  ✘ Dépôt DEV introuvable : {src_root!r}")
+        return False
+
+    try:
+        repo = git.Repo(dest_root)
+    except git.InvalidGitRepositoryError:
+        on_progress(f"  ✘ {dest_root!r} n'est pas un dépôt Git")
+        return False
+
+    copied: list[str] = []
+    had_error = False
+
+    # 1. Copie des fichiers
+    for f in files:
+        src_rel  = f["path"].replace("/", os.sep)
+        dest_rel = (f.get("dest_path") or f["path"]).replace("/", os.sep)
+        src_abs  = os.path.join(src_root,  src_rel)
+        dest_abs = os.path.join(dest_root, dest_rel)
+
+        if not os.path.isfile(src_abs):
+            on_progress(f"  ⚠ Absent dans DEV : {f['path']}")
+            had_error = True
+            continue
+        try:
+            os.makedirs(os.path.dirname(dest_abs), exist_ok=True)
+            shutil.copy2(src_abs, dest_abs)
+            dest_unix = dest_rel.replace(os.sep, "/")
+            copied.append(dest_unix)
+            on_progress(f"  ✓ {dest_unix}")
+        except Exception as exc:
+            on_progress(f"  ✘ {f['path']} : {exc}")
+            had_error = True
+
+    if not copied:
+        on_progress("  ⚠ Aucun fichier copié — commit annulé")
+        return False
+
+    # 2. git add
+    try:
+        on_progress(f"  git add ({len(copied)} fichier(s))…")
+        repo.index.add(copied)
+    except Exception as exc:
+        on_progress(f"  ✘ git add : {exc}")
+        return False
+
+    # 3. git commit
+    try:
+        on_progress(f"  git commit : {commit_message}")
+        repo.index.commit(commit_message)
+    except Exception as exc:
+        on_progress(f"  ✘ git commit : {exc}")
+        return False
+
+    # 4. git tag
+    if tag:
+        try:
+            existing = [t.name for t in repo.tags]
+            if tag in existing:
+                on_progress(f"  ⚠ Tag {tag!r} existe déjà — ignoré")
+            else:
+                repo.create_tag(tag)
+                on_progress(f"  git tag {tag}")
+        except Exception as exc:
+            on_progress(f"  ⚠ git tag : {exc}")
+
+    # 5. push (optionnel)
+    if push and remote_url:
+        git_prefs = prefs.get("git", {})
+        askpass_path: str | None = None
+        try:
+            env, askpass_path = _build_env(conn_method, git_prefs, passphrase)
+            on_progress("  git push…")
+            with repo.git.custom_environment(**env):
+                origin = repo.remotes["origin"]
+                origin.push()
+                if tag:
+                    origin.push(tag)
+            on_progress("  ✔ Poussé")
+        except Exception as exc:
+            on_progress(f"  ✘ push : {exc}")
+            had_error = True
+        finally:
+            if askpass_path and os.path.exists(askpass_path):
+                try:
+                    os.unlink(askpass_path)
+                except OSError:
+                    pass
+
+    on_progress(f"  ✔ {len(copied)} fichier(s) livrés dans {os.path.basename(dest_root)}")
+    return not had_error
