@@ -112,6 +112,39 @@ def get_next_beta1_tag(repo_path: str) -> str:
     return ""
 
 
+def get_next_quadient_r15_tag(repo_path: str) -> str:
+    """
+    Calcule le prochain tag Quadient R15 :
+      1. Dernier tag v1.2.x ou v1.2.x-beta1 → propose v1.2.(PATCH+1)-beta1
+      2. Absent → dernier tag v1.1.x ou v1.1.x-beta1 → propose v1.2.(PATCH+1)-beta1
+      3. Rien trouvé → ''
+
+    Exemple : v1.1.13 → v1.2.14-beta1
+    """
+    import re
+    ver12_re = re.compile(r"^v?1\.2\.(\d+)(?:-beta1)?$")
+    ver11_re = re.compile(r"^v?1\.1\.(\d+)(?:-beta1)?$")
+
+    all_tags = get_tags(repo_path)   # triés par date desc
+
+    for name in all_tags:
+        m = ver12_re.match(name)
+        if m:
+            result = f"v1.2.{int(m.group(1)) + 1}-beta1"
+            _log.info("[git] get_next_quadient_r15_tag  cwd=%s  last=%s  → %s", repo_path, name, result)
+            return result
+
+    for name in all_tags:
+        m = ver11_re.match(name)
+        if m:
+            result = f"v1.2.{int(m.group(1)) + 1}-beta1"
+            _log.info("[git] get_next_quadient_r15_tag  cwd=%s  last=%s  → %s (from v1.1.x)", repo_path, name, result)
+            return result
+
+    _log.info("[git] get_next_quadient_r15_tag  cwd=%s  → no v1.1.x / v1.2.x tag found", repo_path)
+    return ""
+
+
 def get_all_files_at_tag(repo_path: str, tag: str) -> list[str]:
     """
     Retourne tous les fichiers présents dans le dépôt au commit du tag donné.

@@ -22,6 +22,7 @@ Layout (fidèle à la maquette step2.png) :
 import datetime
 import os
 import queue
+import re
 import subprocess
 import threading
 import tkinter as tk
@@ -244,8 +245,29 @@ class Screen3Delivery:
         # Charge les tags en arrière-plan
         self._start_tag_loading()
 
+    # Regex du format de tag Quadient R15
+    _RE_QUADIENT_TAG = re.compile(r"^v1\.2\.")
+
     def _on_quadient_changed(self) -> None:
-        pass  # Placeholder pour extensions futures
+        """Filtre les comboboxes selon le flag Quadient R15."""
+        self._apply_quadient_filter()
+
+    def _apply_quadient_filter(self) -> None:
+        """Restreint (ou restaure) les listes de tags selon la case Quadient R15."""
+        quadient = self._quadient_r15_var.get()
+        for combo, all_tags_attr, var in (
+            (self._combo_wfd,  "_tags_wfd",  self._tag_wfd_var),
+            (self._combo_ress, "_tags_ress", self._tag_ress_var),
+        ):
+            all_tags: list[str] = getattr(self, all_tags_attr, [])
+            filtered = (
+                [t for t in all_tags if self._RE_QUADIENT_TAG.match(t)]
+                if quadient else all_tags
+            )
+            combo["values"] = filtered
+            # Si la valeur courante ne correspond plus au filtre, on la réinitialise
+            if quadient and var.get() and not self._RE_QUADIENT_TAG.match(var.get()):
+                var.set(filtered[0] if filtered else "")
 
     # ------------------------------------------------------------------
     # Chargement asynchrone des tags
@@ -256,14 +278,22 @@ class Screen3Delivery:
         code      = project.get("code", "").upper()
         wfd_path  = project.get("depot_wfd_local",  "")
         ress_path = project.get("depot_ress_local", "")
+        quadient  = self._quadient_r15_var.get()
+
+        def _next_tag(path: str) -> str:
+            return (
+                git_ops.get_next_quadient_r15_tag(path)
+                if quadient else
+                git_ops.get_next_beta1_tag(path)
+            )
 
         def run() -> None:
             if wfd_path:
                 log.info("[screen3] Chargement WFD  cwd=%s", wfd_path)
                 all_tags = git_ops.get_tags(wfd_path)
-                next_tag = git_ops.get_next_beta1_tag(wfd_path)
+                next_tag = _next_tag(wfd_path)
                 fli      = git_ops.get_last_fli_commit(wfd_path, code) if code else None
-                log.info("[screen3] WFD  tags=%d  next_beta1=%r  fli=%s",
+                log.info("[screen3] WFD  tags=%d  next=%r  fli=%s",
                          len(all_tags), next_tag, fli["message"] if fli else "—")
                 self._tag_queue.put(("wfd", all_tags, next_tag, fli))
             else:
@@ -271,9 +301,9 @@ class Screen3Delivery:
             if ress_path:
                 log.info("[screen3] Chargement RESS  cwd=%s", ress_path)
                 all_tags = git_ops.get_tags(ress_path)
-                next_tag = git_ops.get_next_beta1_tag(ress_path)
+                next_tag = _next_tag(ress_path)
                 fli      = git_ops.get_last_fli_commit(ress_path, code) if code else None
-                log.info("[screen3] RESS  tags=%d  next_beta1=%r  fli=%s",
+                log.info("[screen3] RESS  tags=%d  next=%r  fli=%s",
                          len(all_tags), next_tag, fli["message"] if fli else "—")
                 self._tag_queue.put(("ress", all_tags, next_tag, fli))
             else:
@@ -305,6 +335,7 @@ class Screen3Delivery:
                         self._last_fli_ress = fli
                 elif kind == "done":
                     self._apply_fli_id()
+                    self._apply_quadient_filter()
                     self._wizard.set_next_enabled(True)
                     return
         except queue.Empty:
@@ -379,6 +410,25 @@ class Screen3Delivery:
                 parent=self.frame,
             )
             return False
+
+        if self._quadient_r15_var.get():
+            bad_tags = [
+                (label, val)
+                for label, val in (
+                    ("WFD maîtres",  self._tag_wfd_var.get()),
+                    ("Ressources",   self._tag_ress_var.get()),
+                )
+                if val and not self._RE_QUADIENT_TAG.match(val)
+            ]
+            if bad_tags:
+                details = "\n".join(f"• {lbl} : {val}" for lbl, val in bad_tags)
+                messagebox.showwarning(
+                    "Tag invalide",
+                    "Livraison Quadient R15 : les tags doivent être de la forme v1.2.x\n\n"
+                    + details,
+                    parent=self.frame,
+                )
+                return False
 
         delivery = {
             "livreur":         self._livreur_var.get(),
@@ -578,7 +628,6 @@ class _DeliveryConfirmDialog:
         out_dir = self._out_var.get().strip()
         if not out_dir:
             self._append_log("⚠ Dossier de sortie non défini — PDFs non générés", "warn")
-            self._btn_deliver.config(state="normal" if self._repo_files else "disabled")
             return
 
         os.makedirs(out_dir, exist_ok=True)
@@ -675,10 +724,10 @@ class _DeliveryConfirmDialog:
                         self._append_log("PDFs générés avec succès.", "ok")
                         self._btn_open.config(state="normal")
                         self._generated_dir = out_dir
+                        if self._repo_files:
+                            self._btn_deliver.config(state="normal")
                     else:
-                        self._append_log("⚠ Certains PDFs ont échoué.", "warn")
-                    if self._repo_files:
-                        self._btn_deliver.config(state="normal")
+                        self._append_log("⚠ Certains PDFs ont échoué — livraison désactivée.", "error")
 
                 elif kind == "deliver_done":
                     _, success = item

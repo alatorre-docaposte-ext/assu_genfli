@@ -403,6 +403,9 @@ def generate_fli(
         ("FONTNAME",      (0, 0), (0, -1), "Helvetica-Bold"),
         # Masquer les bordures horizontales internes de la colonne label (gris sur gris)
         ("LINEBELOW",     (0, 0), (0, n_paths - 2), 0.5, C_LGRAY),
+        # Bordures haute et basse visibles sur la ligne "Tag Git"
+        ("LINEABOVE",     (0, n_paths), (-1, n_paths), 0.5, C_BORDER),
+        ("LINEBELOW",     (0, n_paths), (-1, n_paths), 0.5, C_BORDER),
     ]
     id_t.setStyle(TableStyle(id_style))
     story.append(id_t)
