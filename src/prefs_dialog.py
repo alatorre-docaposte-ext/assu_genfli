@@ -279,6 +279,11 @@ class PrefsDialog:
         self._pwd_visible = False
         ttk.Button(f, text="👁", width=3, command=self._toggle_pwd).grid(row=3, column=2, padx=(4, 0), pady=6)
 
+        # Chemin de dépôt
+        ttk.Label(f, text="Chemin de dépôt :").grid(row=4, column=0, sticky="e", padx=(0, 8), pady=6)
+        self._sftp_root_var = tk.StringVar(value=prefs_mod.get(self._working, "sftp", "remote_root", default=""))
+        ttk.Entry(f, textvariable=self._sftp_root_var).grid(row=4, column=1, columnspan=2, sticky="ew", pady=6)
+
     # ------------------------------------------------------------------
     # Gestion des projets
     # ------------------------------------------------------------------
@@ -495,6 +500,7 @@ class PrefsDialog:
         self._sftp_host_var.set(prefs_mod.get(self._working, "sftp", "host", default=""))
         self._sftp_port_var.set(str(prefs_mod.get(self._working, "sftp", "port", default=22)))
         self._sftp_user_var.set(prefs_mod.get(self._working, "sftp", "username", default=""))
+        self._sftp_root_var.set(prefs_mod.get(self._working, "sftp", "remote_root", default=""))
         self._reload_projects()
         # Livraison
         self._em_nom_var.set(prefs_mod.get(self._working,    "livraison", "emettrice",    "nom",    default=""))
@@ -520,9 +526,10 @@ class PrefsDialog:
         prefs_mod.set_(self._working, "git", "ssh_key",        value=self._ssh_key_var.get())
         prefs_mod.set_(self._working, "git", "https_login",    value=self._git_https_login_var.get())
         prefs_mod.set_(self._working, "git", "https_password", value=_encode_password(self._git_https_pwd_var.get()))
-        prefs_mod.set_(self._working, "sftp", "host",     value=self._sftp_host_var.get())
-        prefs_mod.set_(self._working, "sftp", "username", value=self._sftp_user_var.get())
-        prefs_mod.set_(self._working, "sftp", "password", value=_encode_password(self._sftp_pwd_var.get()))
+        prefs_mod.set_(self._working, "sftp", "host",        value=self._sftp_host_var.get())
+        prefs_mod.set_(self._working, "sftp", "username",    value=self._sftp_user_var.get())
+        prefs_mod.set_(self._working, "sftp", "password",    value=_encode_password(self._sftp_pwd_var.get()))
+        prefs_mod.set_(self._working, "sftp", "remote_root", value=self._sftp_root_var.get())
         try:
             port = max(1, min(65535, int(self._sftp_port_var.get())))
         except ValueError:

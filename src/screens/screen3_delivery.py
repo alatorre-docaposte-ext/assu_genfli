@@ -31,6 +31,7 @@ from tkinter import ttk, messagebox, filedialog
 from src import git_ops
 from src import preferences as prefs_mod
 from src import fli_pdf
+from src import sftp_ops
 from src.logger import get_logger
 from src.widgets import DateEntry
 
@@ -702,7 +703,36 @@ class _DeliveryConfirmDialog:
 
             self._queue.put(("deliver_done", not had_error))
 
-        threading.Thread(target=run, daemon=True).start()
+        def run_with_sftp() -> None:
+            run()
+            # Upload SFTP des PDFs générés
+            out_dir = self._out_var.get().strip()
+            if not out_dir:
+                return
+            pdf_paths = [
+                os.path.join(out_dir, f"{fli_id_str}.pdf")
+                for fli_id_str in self._fli_ids.values()
+                if os.path.isfile(os.path.join(out_dir, f"{fli_id_str}.pdf"))
+            ]
+            if not pdf_paths:
+                return
+            host = prefs_mod.get(self._prefs, "sftp", "host", default="").strip()
+            if not host:
+                return
+            self._queue.put(("log", "", ""))
+            self._queue.put(("log", "─" * 56, "head"))
+            self._queue.put(("log", "Envoi des PDFs vers le serveur SFTP…", "head"))
+            sftp_ok = sftp_ops.upload_files_from_prefs(
+                prefs=self._prefs,
+                local_paths=pdf_paths,
+                on_progress=lambda msg: self._queue.put(("log", msg, "")),
+            )
+            if sftp_ok:
+                self._queue.put(("log", "✔ PDFs envoyés sur le SFTP.", "ok"))
+            else:
+                self._queue.put(("log", "⚠ Envoi SFTP incomplet.", "warn"))
+
+        threading.Thread(target=run_with_sftp, daemon=True).start()
 
     # ------------------------------------------------------------------
     # Polling de la queue (boucle continue)
