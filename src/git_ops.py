@@ -176,6 +176,22 @@ def read_wfd_version(ress_root: str, wfd_name: str) -> tuple[str | None, str | N
         return None, None
 
 
+def read_v_file(abs_path: str) -> tuple[str | None, str | None]:
+    """
+    Lit directement un fichier .v depuis son chemin absolu.
+    Retourne (version_num, maquette_ver) ou (None, None) si erreur.
+    """
+    try:
+        with open(abs_path, encoding="utf-8", errors="replace") as fh:
+            line = fh.readline().strip()
+        parts = line.split(";")
+        if len(parts) < 3:
+            return None, None
+        return parts[1].strip(), parts[2].strip()
+    except OSError:
+        return None, None
+
+
 def format_wfd_version(version_num: str, maquette_ver: str) -> str:
     """
     Formate la version WFD : <maquette_ver>_<version_num sur 5 chiffres>.
@@ -591,3 +607,119 @@ def copy_and_deliver(
 
     on_progress(f"  ✔ {len(copied)} fichier(s) livrés dans {os.path.basename(dest_root)}")
     return not had_error
+
+
+# ---------------------------------------------------------------------------
+# Gestion automatique des fichiers .v (versions WFD)
+# ---------------------------------------------------------------------------
+
+def find_v_file_path(repo_root: str, wfd_name: str) -> tuple[str | None, str | None]:
+    """
+    Cherche le fichier PARAM/<wfd_name>.v dans repo_root (récursif).
+    Retourne (chemin_absolu, chemin_relatif_unix) ou (None, None) si introuvable.
+    """
+    import glob
+    stem    = os.path.splitext(os.path.basename(wfd_name))[0].upper()
+    pattern = os.path.join(repo_root, "**", "PARAM", f"{stem}.v")
+    matches = glob.glob(pattern, recursive=True)
+    if not matches:
+        _log.debug("[git] find_v_file_path  repo=%s  wfd=%s  → not found", repo_root, stem)
+        return None, None
+    abs_path = matches[0]
+    rel_path = os.path.relpath(abs_path, repo_root).replace(os.sep, "/")
+    return abs_path, rel_path
+
+
+def increment_v_file(abs_path: str) -> tuple[str, str] | None:
+    """
+    Incrémente VERSION_NUM dans un fichier .v (format NOM;NUM;MAQ;...) de +1.
+    Le fichier est modifié sur place.
+    Retourne (new_version_num, maquette_ver) ou None si erreur.
+    """
+    try:
+        with open(abs_path, encoding="utf-8", errors="replace") as fh:
+            content = fh.read()
+        lines = content.splitlines(keepends=True)
+        if not lines:
+            return None
+        parts = lines[0].rstrip("\r\n").split(";")
+        if len(parts) < 3:
+            _log.warning("[git] increment_v_file  %s  → format inattendu : %r", abs_path, lines[0])
+            return None
+        try:
+            new_num = int(parts[1].strip()) + 1
+        except ValueError:
+            _log.warning("[git] increment_v_file  %s  → VERSION_NUM non entier : %r", abs_path, parts[1])
+            return None
+        ver_maq  = parts[2].strip()
+        parts[1] = str(new_num)
+        eol      = "\r\n" if lines[0].endswith("\r\n") else "\n"
+        lines[0] = ";".join(parts) + eol
+        with open(abs_path, "w", encoding="utf-8") as fh:
+            fh.writelines(lines)
+        _log.info("[git] increment_v_file  %s  → version %s (maq=%s)", abs_path, new_num, ver_maq)
+        return str(new_num), ver_maq
+    except OSError as exc:
+        _log.warning("[git] increment_v_file  %s : %s", abs_path, exc)
+        return None
+
+
+def rebuild_versions_txt(repo_root: str) -> str | None:
+    """
+    Recrée PARAM/versions.txt à partir de tous les *.v présents sous un répertoire PARAM/
+    dans repo_root. Chaque ligne = première ligne du fichier .v correspondant, triées par nom.
+    Retourne le chemin relatif (unix) du fichier écrit, ou None si aucun .v trouvé / erreur.
+    """
+    import glob
+    pattern = os.path.join(repo_root, "**", "PARAM", "*.v")
+    v_files = sorted(glob.glob(pattern, recursive=True))
+    if not v_files:
+        _log.debug("[git] rebuild_versions_txt  repo=%s  → aucun .v trouvé", repo_root)
+        return None
+
+    # Réutilise le répertoire PARAM du premier .v pour placer versions.txt
+    existing_txts = glob.glob(
+        os.path.join(repo_root, "**", "PARAM", "versions.txt"), recursive=True
+    )
+    out_path = existing_txts[0] if existing_txts else os.path.join(
+        os.path.dirname(v_files[0]), "versions.txt"
+    )
+
+    lines: list[str] = []
+    for v_path in v_files:
+        try:
+            with open(v_path, encoding="utf-8", errors="replace") as fh:
+                first = fh.readline().rstrip("\r\n")
+            if first:
+                lines.append(first + "\n")
+        except OSError as exc:
+            _log.warning("[git] rebuild_versions_txt  %s : %s", v_path, exc)
+
+    try:
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.writelines(lines)
+        rel = os.path.relpath(out_path, repo_root).replace(os.sep, "/")
+        _log.info("[git] rebuild_versions_txt  → %s (%d entrée(s))", rel, len(lines))
+        return rel
+    except OSError as exc:
+        _log.warning("[git] rebuild_versions_txt  %s : %s", out_path, exc)
+        return None
+
+
+def amend_with_files(repo_path: str, rel_paths: list[str]) -> bool:
+    """
+    Ajoute rel_paths à l'index Git puis amende le dernier commit (--amend --no-edit).
+    Retourne True si succès.
+    """
+    try:
+        repo = git.Repo(repo_path)
+        if not repo.head.is_valid():
+            _log.warning("[git] amend_with_files  %s : aucun commit HEAD", repo_path)
+            return False
+        repo.index.add(rel_paths)
+        repo.git.commit("--amend", "--no-edit")
+        _log.info("[git] amend_with_files  repo=%s  files=%s", repo_path, rel_paths)
+        return True
+    except Exception as exc:
+        _log.warning("[git] amend_with_files  %s : %s", repo_path, exc)
+        return False
