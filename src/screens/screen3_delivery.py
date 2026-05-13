@@ -508,6 +508,7 @@ class _DeliveryConfirmDialog:
             repo: f"FLI_{code}_EXT_{repo}_LIV_{fli_id:05d}"
             for repo in self._repo_files
         }
+        self._json_fli_name = f"FLI_{code}_EXT_LIV_{fli_id:05d}"
 
         default_out = prefs_mod.get(prefs, "general", "output_dir", default="") or os.path.join(
             os.path.expanduser("~"), "Documents"
@@ -641,14 +642,25 @@ class _DeliveryConfirmDialog:
             for repo, files in self._repo_files.items():
                 fli_id_str = self._fli_ids[repo]
                 out_path   = os.path.join(out_dir, f"{fli_id_str}.pdf")
-                json_path  = os.path.join(out_dir, f"{fli_id_str}.json")
                 try:
                     fli_pdf.generate_fli(out_path, repo, fli_id_str, context, files)
-                    fli_pdf.generate_fli_json(json_path, repo, fli_id_str, context, files)
                     self._queue.put(("log", f"  ✓ {fli_id_str}.pdf  ({len(files)} fichier(s))", "ok"))
                 except Exception as exc:
                     self._queue.put(("log", f"  ✘ {fli_id_str}.pdf : {exc}", "error"))
                     ok = False
+            # JSON unique pour la livraison complète
+            json_path = os.path.join(out_dir, f"{self._json_fli_name}.json")
+            try:
+                fli_pdf.generate_delivery_json(
+                    json_path,
+                    context.get("fli_id", 0),
+                    context,
+                    self._repo_files,
+                )
+                self._queue.put(("log", f"  ✓ {self._json_fli_name}.json", "ok"))
+            except Exception as exc:
+                self._queue.put(("log", f"  ✘ {self._json_fli_name}.json : {exc}", "error"))
+                ok = False
             self._queue.put(("pdf_done", ok, out_dir))
 
         threading.Thread(target=run, daemon=True).start()
@@ -714,6 +726,9 @@ class _DeliveryConfirmDialog:
                 for fli_id_str in self._fli_ids.values()
                 if os.path.isfile(os.path.join(out_dir, f"{fli_id_str}.pdf"))
             ]
+            json_path = os.path.join(out_dir, f"{self._json_fli_name}.json")
+            if os.path.isfile(json_path):
+                pdf_paths.append(json_path)
             if not pdf_paths:
                 return
             host = prefs_mod.get(self._prefs, "sftp", "host", default="").strip()

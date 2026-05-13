@@ -436,75 +436,72 @@ def generate_fli(
 # ---------------------------------------------------------------------------
 # JSON companion
 # ---------------------------------------------------------------------------
-def generate_fli_json(
+def generate_delivery_json(
     output_path: str,
-    repo: str,
-    fli_id_str: str,
+    fli_id: int,
     context: dict,
-    files: list[dict],
+    repo_files: dict,
 ) -> None:
     """
-    Génère le fichier JSON accompagnateur d'une FLI.
-    Même structure que le PDF mais en données brutes.
+    Génère le fichier JSON unique de livraison (tous dépôts confondus).
+
+    Structure :
+      metas.versionning  → "1.2" (Quadient R15) ou "1.1"
+      metas.res_fli/wfd_fli → numéro FLI padé sur 5
+      metas.res_tag/wfd_tag → numéro de patch du tag (sans préfixe 1.x ni -beta1)
+      content            → CSV inline (header + lignes)
     """
     import json
+    import re
 
-    em   = context.get("emettrice",   {}) or {}
-    dest = context.get("destinataire", {}) or {}
+    _REPO_DEPOT_KEY = {
+        "WFD":    "depot_wfd",
+        "RESS":   "depot_ress",
+        "COMMUN": "depot_commun",
+    }
 
-    depot_name = context.get(f"depot_{repo.lower()}") or ""
-    if not depot_name:
-        proj_raw   = context.get("project_name", "").lower().replace(" ", "_")
-        depot_name = f"{proj_raw}_{repo.lower()}"
+    def _tag_num(tag: str) -> str:
+        """'v1.2.34-beta1' → '34',  '' → ''"""
+        m = re.search(r'\.(\d+)(?:-beta1)?$', tag or "")
+        return m.group(1) if m else ""
+
+    quadient    = context.get("quadient_r15", False)
+    versionning = "1.2" if quadient else "1.1"
+    fli_num_str = f"{fli_id:05d}"
+
+    metas = {
+        "versionning": versionning,
+        "targets":     ["intégration"],
+        "res_fli":     fli_num_str,
+        "res_tag":     _tag_num(context.get("tag_ress", "")),
+        "wfd_fli":     fli_num_str,
+        "wfd_tag":     _tag_num(context.get("tag_wfd", "")),
+    }
+
+    header = "PROJET;DIR;OBJET;EXT;VERSION;VERSION_ALT;REMARQUE"
+    rows   = [header]
+    for repo, files in repo_files.items():
+        depot = context.get(_REPO_DEPOT_KEY.get(repo, ""), "") or ""
+        for f in files:
+            dest     = (f.get("dest_path") or f["path"]).replace("\\", "/")
+            dirpart  = os.path.dirname(dest)
+            basename = os.path.basename(dest)
+            if "." in basename:
+                stem, ext = basename.rsplit(".", 1)
+            else:
+                stem, ext = basename, ""
+            rows.append(f"{depot};{dirpart};{stem};{ext};;;")
+
+    content = "\n".join(rows) + "\n"
 
     data = {
-        "fli_id":          fli_id_str,
-        "depot":           depot_name,
-        "objet": {
-            "client":          em.get("client", ""),
-            "entite":          em.get("nom", ""),
-            "projet":          context.get("project_name", ""),
-            "date_reference":  context.get("date_reference", ""),
-            "mode_livraison":  em.get("mode", ""),
-        },
-        "signatures": {
-            "livraison": {
-                "entite": em.get("nom", ""),
-                "nom":    context.get("livreur", ""),
-                "date":   context.get("date_livraison", ""),
-            },
-            "prise_en_compte": {
-                "entite": dest.get("nom", ""),
-                "nom":    context.get("reception_par", ""),
-            },
-        },
-        "livraison": {
-            "objet_concerne":    "Logiciel",
-            "type_livraison":    "Evolution",
-            "version":           fli_id_str.split("_")[-1],
-            "titre":             fli_id_str,
-        },
-        "tag_git":  context.get(f"tag_{repo.lower()}") or "",
-        "stockage": {
-            "archive":          "Non applicable",
-            "serveur":          "Non applicable",
-            "repertoire":       f"Projet {depot_name} sous GIT",
-        },
-        "fichiers": [
-            {
-                "chemin_dev":  f["path"],
-                "chemin_dest": f.get("dest_path") or f["path"],
-                "statut": f.get("status", ""),
-                "source": f.get("source", ""),
-                "cible":  f.get("cible",  ""),
-            }
-            for f in files
-        ],
+        "metas":   metas,
+        "content": content,
     }
 
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(data, fh, ensure_ascii=False, indent=2)
-    _log.info("[fli_pdf] JSON généré : %s", output_path)
+    _log.info("[fli_pdf] JSON livraison généré : %s", output_path)
 
 
 # ---------------------------------------------------------------------------
@@ -547,4 +544,6 @@ def build_context(prefs: dict, delivery: dict) -> dict:
         "depot_wfd":      _depot_name("depot_wfd_distant"),
         "depot_ress":     _depot_name("depot_ress_distant"),
         "depot_commun":   _depot_name("depot_commun_distant"),
+        "fli_id":         delivery.get("fli_id", 0),
+        "quadient_r15":   delivery.get("quadient_r15", False),
     }
