@@ -6,3 +6,4 @@ __pycache__
 *.mp4
 list.csv
 seed_routing_rules.py
+example.json
