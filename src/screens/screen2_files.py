@@ -11,6 +11,7 @@ Pipeline :
 """
 from __future__ import annotations
 
+import os
 import queue
 import threading
 import tkinter as tk
@@ -83,13 +84,15 @@ class Screen2Files:
 
         self._tree = ttk.Treeview(
             tree_frame,
-            columns=("check", "status", "path", "dest_path", "source", "cible"),
+            columns=("check", "status", "path", "ver_num", "ver_maq", "dest_path", "source", "cible"),
             show="headings",
             selectmode="browse",
         )
         self._tree.heading("check",     text="")
         self._tree.heading("status",    text="Statut",             anchor="center")
         self._tree.heading("path",      text="Fichier (DEV)",       anchor="w")
+        self._tree.heading("ver_num",   text="Version",            anchor="center")
+        self._tree.heading("ver_maq",   text="Maquette",           anchor="center")
         self._tree.heading("dest_path", text="Destination (intég)",  anchor="w")
         self._tree.heading("source",    text="Dépôt",             anchor="center")
         self._tree.heading("cible",     text="Cible",              anchor="center")
@@ -97,6 +100,8 @@ class Screen2Files:
         self._tree.column("check",     width=30,  minwidth=30,  stretch=False, anchor="center")
         self._tree.column("status",    width=95,  minwidth=70,  stretch=False, anchor="center")
         self._tree.column("path",      width=300, minwidth=150, stretch=True,  anchor="w")
+        self._tree.column("ver_num",   width=70,  minwidth=60,  stretch=False, anchor="center")
+        self._tree.column("ver_maq",   width=75,  minwidth=60,  stretch=False, anchor="center")
         self._tree.column("dest_path", width=260, minwidth=120, stretch=True,  anchor="w")
         self._tree.column("source",    width=60,  minwidth=50,  stretch=False, anchor="center")
         self._tree.column("cible",     width=60,  minwidth=50,  stretch=False, anchor="center")
@@ -109,6 +114,7 @@ class Screen2Files:
         hsb.grid(row=1, column=0, sticky="ew")
 
         self._tree.bind("<Button-1>", self._on_click)
+        self._tree.bind("<Double-1>", self._on_double_click)
 
         # Couleurs par statut
         self._tree.tag_configure("added",    foreground="#007700")
@@ -140,7 +146,7 @@ class Screen2Files:
         if session_files is not None:
             # Restaurer la liste de session (revenir en arrière)
             self._files = session_files
-            self._refresh_tree()
+            self._load_wfd_versions()
             self._update_summary()
         else:
             self._start_diff()
@@ -224,6 +230,7 @@ class Screen2Files:
                     total = len(self._files)
                     self._diff_status_var.set(f"Diff terminé — {total} fichier(s) trouvé(s)")
                     self._resolve_cibles()
+                    self._load_wfd_versions()
                     self._update_summary()
                     return
         except queue.Empty:
@@ -254,6 +261,55 @@ class Screen2Files:
             if f["cible"] == "NONE":
                 f["checked"] = False
         self._refresh_tree()
+
+    # ------------------------------------------------------------------
+    # Versions WFD
+    # ------------------------------------------------------------------
+
+    def _load_wfd_versions(self) -> None:
+        """Lit les fichiers PARAM/<wfd>.v dans le dépôt RESS et pré-remplit ver_num et ver_maq."""
+        project   = prefs_mod.get(self._prefs, "session", "selected_project", default={})
+        ress_root = project.get("depot_ress_local", "")
+        if ress_root:
+            for f in self._files:
+                if f.get("cible") not in ("WFD", "BOTH"):
+                    continue
+                if f.get("ver_num"):  # déjà renseigné (session restaurée)
+                    continue
+                wfd_name = os.path.basename(f.get("dest_path") or f["path"])
+                v_num, v_maq = git_ops.read_wfd_version(ress_root, wfd_name)
+                if v_num is not None:
+                    f["ver_num"] = v_num
+                    f["ver_maq"] = v_maq or ""
+        self._refresh_tree()
+
+    def _on_double_click(self, event: tk.Event) -> None:
+        """Édition de ver_num (#4) ou ver_maq (#5) par double-clic."""
+        if self._tree.identify_region(event.x, event.y) != "cell":
+            return
+        col = self._tree.identify_column(event.x)
+        if col not in ("#4", "#5"):
+            return
+        iid = self._tree.identify_row(event.y)
+        if not iid:
+            return
+        idx = int(iid)
+        f = self._files[idx]
+        if f.get("cible") not in ("WFD", "BOTH"):
+            return
+        if col == "#4":
+            field, title, prompt = "ver_num", "N° version", "Numéro de version"
+        else:
+            field, title, prompt = "ver_maq", "Version maquette", "Version de maquette"
+        new_val = simpledialog.askstring(
+            title,
+            f"{prompt} pour {os.path.basename(f['path'])} :",
+            initialvalue=f.get(field, ""),
+            parent=self.frame,
+        )
+        if new_val is not None:
+            f[field] = new_val.strip()
+            self._refresh_tree()
 
     # ------------------------------------------------------------------
     # Treeview
@@ -288,8 +344,11 @@ class Screen2Files:
             if cible in ("WFD", "RESS", "COMMUN", "BOTH", "NONE") and f["checked"]:
                 tags = (tag, f"cible_{cible}")
 
+            is_wfd  = cible in ("WFD", "BOTH")
+            ver_num = f.get("ver_num", "") if is_wfd else ""
+            ver_maq = f.get("ver_maq", "") if is_wfd else ""
             self._tree.insert("", "end", iid=str(i),
-                              values=(chk, label, f["path"], dest_display, source, cible),
+                              values=(chk, label, f["path"], ver_num, ver_maq, dest_display, source, cible),
                               tags=tags)
 
     def _on_click(self, event: tk.Event) -> None:

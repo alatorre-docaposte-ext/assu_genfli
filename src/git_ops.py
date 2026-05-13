@@ -145,6 +145,48 @@ def get_next_quadient_r15_tag(repo_path: str) -> str:
     return ""
 
 
+def read_wfd_version(ress_root: str, wfd_name: str) -> tuple[str | None, str | None]:
+    """
+    Cherche le fichier PARAM/<wfd_name>.v dans ress_root (recherche récursive).
+    Retourne (version_num, maquette_version) ou (None, None).
+
+    Format attendu : NOM;VERSION_NUM;VERSION_MAQUETTE;...
+    Exemple       : COURSINRELANCDIT;25;1.3;SGK_EXT_LIV_00401;ANO (RC-60955);
+    """
+    import glob
+    stem    = os.path.splitext(os.path.basename(wfd_name))[0].upper()
+    pattern = os.path.join(ress_root, "**", "PARAM", f"{stem}.v")
+    matches = glob.glob(pattern, recursive=True)
+    if not matches:
+        _log.debug("[git] read_wfd_version  ress_root=%s  name=%s  → not found", ress_root, stem)
+        return None, None
+    try:
+        with open(matches[0], encoding="utf-8", errors="replace") as fh:
+            line = fh.readline().strip()
+        parts = line.split(";")
+        if len(parts) < 3:
+            _log.warning("[git] read_wfd_version  %s  → format inattendu : %r", matches[0], line)
+            return None, None
+        version_num  = parts[1].strip()
+        maquette_ver = parts[2].strip()
+        _log.debug("[git] read_wfd_version  name=%s  → num=%s  maq=%s", stem, version_num, maquette_ver)
+        return version_num, maquette_ver
+    except OSError as exc:
+        _log.warning("[git] read_wfd_version  %s : %s", matches[0], exc)
+        return None, None
+
+
+def format_wfd_version(version_num: str, maquette_ver: str) -> str:
+    """
+    Formate la version WFD : <maquette_ver>_<version_num sur 5 chiffres>.
+    Exemple : version_num='25', maquette_ver='1.3' → '1.3_00025'
+    """
+    try:
+        return f"{maquette_ver}_{int(version_num):05d}"
+    except (ValueError, TypeError):
+        return f"{maquette_ver}_{version_num}" if maquette_ver else str(version_num)
+
+
 def get_all_files_at_tag(repo_path: str, tag: str) -> list[str]:
     """
     Retourne tous les fichiers présents dans le dépôt au commit du tag donné.

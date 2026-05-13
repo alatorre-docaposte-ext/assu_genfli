@@ -14,6 +14,8 @@ from typing import Any
 
 _log = logging.getLogger("assu_genfli")
 
+from src import git_ops
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
@@ -329,11 +331,17 @@ def generate_fli(
                Paragraph("Descriptif", S_HDR_WH)]]
     wf_rows = []
     for f in files:
-        src  = f["path"]
-        dest = f.get("dest_path") or src
-        wf_rows.append([Paragraph(dest, S_NORMAL),
-                        Paragraph("",       S_NORMAL),
-                        Paragraph("",       S_NORMAL)])
+        src         = f["path"]
+        dest        = f.get("dest_path") or src
+        if repo == "WFD":
+            ver_num = f.get("ver_num", "")
+            ver_maq = f.get("ver_maq", "")
+            version_str = git_ops.format_wfd_version(ver_num, ver_maq) if ver_num else ""
+        else:
+            version_str = ""
+        wf_rows.append([Paragraph(dest,        S_NORMAL),
+                        Paragraph(version_str, S_NORMAL),
+                        Paragraph("",          S_NORMAL)])
 
     wf_data = wf_hdr + wf_rows
     wf_t = Table(wf_data, colWidths=[INNER_W * 0.45, INNER_W * 0.28, INNER_W * 0.27])
