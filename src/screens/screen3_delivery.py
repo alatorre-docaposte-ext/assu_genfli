@@ -738,8 +738,9 @@ class _DeliveryConfirmDialog:
                     conn_method    = conn_method,
                     prefs          = self._prefs,
                     on_progress    = lambda msg: self._queue.put(("log", msg, "")),
-                    push           = False,
+                    push           = True,
                     remote_url     = remote_url,
+                    branch         = "dev" if prefs_mod.get(self._prefs, "general", "dev_mode", default=False) else "",
                 )
                 if not ok:
                     had_error = True

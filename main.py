@@ -83,6 +83,28 @@ def main():
     # Synchronise la coche si la fenêtre est fermée via sa propre croix/bouton
     log_window.set_on_visibility_change(lambda visible: log_visible_var.set(visible))
 
+    # Menu DEV
+    menu_dev = tk.Menu(menubar, tearoff=0)
+    menubar.add_cascade(label="DEV", menu=menu_dev)
+
+    dev_mode_var = tk.BooleanVar(value=bool(prefs_mod.get(prefs, "general", "dev_mode", default=False)))
+
+    def _update_dev_title():
+        suffix = "  [MODE DEV]"
+        title  = root.title()
+        base   = title.replace(suffix, "")
+        root.title(base + suffix if dev_mode_var.get() else base)
+        prefs_mod.set_(prefs, "general", "dev_mode", value=dev_mode_var.get())
+
+    menu_dev.add_checkbutton(
+        label="Mode Dev",
+        variable=dev_mode_var,
+        command=_update_dev_title,
+    )
+    # Appliquer le titre au démarrage si le mode était actif
+    if dev_mode_var.get():
+        _update_dev_title()
+
     # --- Wizard ---
     wizard = Wizard(root, prefs)
     wizard.register(Screen1Project)

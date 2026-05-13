@@ -504,6 +504,7 @@ def copy_and_deliver(
     push: bool = False,
     remote_url: str = "",
     passphrase: str = "",
+    branch: str = "",
 ) -> bool:
     """
     Copie les fichiers de src_root vers dest_root selon leur dest_path,
@@ -525,6 +526,38 @@ def copy_and_deliver(
     except git.InvalidGitRepositoryError:
         on_progress(f"  ✘ {dest_root!r} n'est pas un dépôt Git")
         return False
+
+    # Déterminer la branche cible et s'y positionner
+    if branch:
+        branch_target = branch
+    else:
+        # Détection automatique de la branche par défaut du remote
+        try:
+            branch_target = repo.remotes["origin"].refs["HEAD"].reference.remote_head
+        except Exception:
+            local_names = [b.name for b in repo.branches]
+            if "master" in local_names:
+                branch_target = "master"
+            elif "main" in local_names:
+                branch_target = "main"
+            else:
+                branch_target = local_names[0] if local_names else "master"
+
+    try:
+        current_branch = repo.active_branch.name
+    except Exception:
+        current_branch = None
+
+    if current_branch != branch_target:
+        try:
+            if branch_target in [b.name for b in repo.branches]:
+                repo.git.checkout(branch_target)
+            else:
+                repo.git.checkout("-b", branch_target)
+            on_progress(f"  git checkout {branch_target}")
+        except Exception as exc:
+            on_progress(f"  ✘ git checkout {branch_target} : {exc}")
+            return False
 
     copied: list[str] = []
     had_error = False
@@ -582,19 +615,22 @@ def copy_and_deliver(
         except Exception as exc:
             on_progress(f"  ⚠ git tag : {exc}")
 
-    # 5. push (optionnel)
+    # 5. push
     if push and remote_url:
         git_prefs = prefs.get("git", {})
         askpass_path: str | None = None
         try:
             env, askpass_path = _build_env(conn_method, git_prefs, passphrase)
-            on_progress("  git push…")
+            current_branch = repo.active_branch.name
+            on_progress(f"  git push origin {current_branch}…")
             with repo.git.custom_environment(**env):
                 origin = repo.remotes["origin"]
-                origin.push()
+                origin.push(refspec=f"{current_branch}:{current_branch}")
+                on_progress(f"  ✔ Branch {current_branch!r} poussée")
                 if tag:
+                    on_progress(f"  git push origin {tag}…")
                     origin.push(tag)
-            on_progress("  ✔ Poussé")
+                    on_progress(f"  ✔ Tag {tag!r} poussé")
         except Exception as exc:
             on_progress(f"  ✘ push : {exc}")
             had_error = True
