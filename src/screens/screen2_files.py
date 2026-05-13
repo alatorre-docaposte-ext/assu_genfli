@@ -34,6 +34,7 @@ _STATUS_TEXT = {
     "R": "Renommé",
     "T": "Type",
     "-": "Manuel",
+    "=": "Inchangé",
 }
 
 
@@ -120,7 +121,8 @@ class Screen2Files:
         self._tree.tag_configure("modified", foreground="#0055cc")
         self._tree.tag_configure("deleted",  foreground="#cc0000")
         self._tree.tag_configure("manual",   foreground="#886600")
-        self._tree.tag_configure("unchecked",foreground="#aaaaaa")
+        self._tree.tag_configure("unchecked",      foreground="#aaaaaa")
+        self._tree.tag_configure("unchecked_diff",  foreground="#5588cc")
         # Couleurs cible (fond léger)
         self._tree.tag_configure("cible_WFD",    background="#e8f0ff")
         self._tree.tag_configure("cible_RESS",   background="#e8f5e8")
@@ -191,7 +193,7 @@ class Screen2Files:
                 diff_type_map = {p: ct for ct, p in diff_paths}
                 for path in all_paths:
                     in_diff = path in diff_path_set
-                    ct      = diff_type_map.get(path, "M")
+                    ct      = diff_type_map.get(path, "=")
                     self._queue.put(("file", (source, ct, path, in_diff)))
                 # Fichiers supprimés (dans le diff mais absents du HEAD)
                 for ct, path in diff_paths:
@@ -421,8 +423,12 @@ class Screen2Files:
     def _refresh_tree(self) -> None:
         self._tree.delete(*self._tree.get_children())
         needle = self._filter_var.get().lower() if hasattr(self, "_filter_var") else ""
-        # Fichiers cochés en premier, puis non cochés — ordre stable à l'intérieur de chaque groupe
-        ordered = sorted(range(len(self._files)), key=lambda i: (not self._files[i]["checked"], self._files[i]["path"]))
+        # Fichiers cochés en premier, puis diff avant inchangés, puis ordre alpha
+        ordered = sorted(range(len(self._files)), key=lambda i: (
+            not self._files[i]["checked"],
+            not self._files[i].get("in_diff", False),
+            self._files[i]["path"],
+        ))
         for i in ordered:
             f         = self._files[i]
             dest_path = f.get("dest_path") or f["path"]
@@ -437,7 +443,7 @@ class Screen2Files:
             dest_display = dest_path if dest_path != f["path"] else ""
 
             if not f["checked"]:
-                tag = "unchecked"
+                tag = "unchecked_diff" if f.get("in_diff") else "unchecked"
             elif source == "Manuel":
                 tag = "manual"
             else:
