@@ -218,9 +218,20 @@ class Screen3Delivery:
         ttk.Label(f, textvariable=self._fli_title_var,
                   font=("Segoe UI", 11, "bold"), foreground="#0055cc").grid(row=1, column=1, sticky="w", pady=5)
 
+        ttk.Label(f, text="Remarque :").grid(row=2, column=0, sticky="e", padx=(0, 8), pady=5)
+        session_rem = prefs_mod.get(self._prefs, "session", "delivery", "remarque", default="")
+        self._remarque_var = tk.StringVar(value=session_rem)
+        _rem_entry = ttk.Entry(f, textvariable=self._remarque_var)
+        _rem_entry.grid(row=2, column=1, sticky="ew", pady=5)
+        if not session_rem:
+            _rem_entry.insert(0, "DOC-XXXX")
+            _rem_entry.config(foreground="gray")
+            _rem_entry.bind("<FocusIn>",  lambda e: (_rem_entry.delete(0, "end"), _rem_entry.config(foreground="")) if _rem_entry.get() == "DOC-XXXX" else None)
+            _rem_entry.bind("<FocusOut>", lambda e: (_rem_entry.insert(0, "DOC-XXXX"), _rem_entry.config(foreground="gray")) if not _rem_entry.get() else None)
+
         # --- Tags Git ---
         tags_frame = ttk.LabelFrame(f, text="Tags Git", padding=8)
-        tags_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        tags_frame.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         tags_frame.columnconfigure(1, weight=1)
 
         session_tag_wfd  = prefs_mod.get(self._prefs, "session", "delivery", "tag_wfd",       default="")
@@ -442,6 +453,7 @@ class Screen3Delivery:
             "quadient_r15":    self._quadient_r15_var.get(),
             "commit_message":  self._fli_title_var.get(),
             "fli_title":       self._fli_title_var.get(),
+            "remarque":        self._remarque_var.get() if self._remarque_var.get() != "DOC-XXXX" else "",
         }
         prefs_mod.set_(self._prefs, "session", "delivery", value=delivery)
         log.info("Livraison configurée : %s — livreur=%s",
@@ -522,7 +534,7 @@ class _DeliveryConfirmDialog:
         self._win.resizable(True, True)
         self._win.minsize(620, 460)
         self._win.columnconfigure(0, weight=1)
-        self._win.rowconfigure(2, weight=1)   # journal extensible
+        self._win.rowconfigure(3, weight=1)   # journal extensible
         self._win.protocol("WM_DELETE_WINDOW", self._on_close)
 
         saved_geom = prefs_mod.get(prefs, "delivery_confirm_dialog", "geometry", default="")
@@ -572,7 +584,7 @@ class _DeliveryConfirmDialog:
 
         # --- Journal scrollable ---
         log_f = ttk.LabelFrame(self._win, text="Journal", padding=4)
-        log_f.grid(row=2, column=0, sticky="nsew", padx=12, pady=(0, 4))
+        log_f.grid(row=3, column=0, sticky="nsew", padx=12, pady=(0, 4))
         log_f.columnconfigure(0, weight=1)
         log_f.rowconfigure(0, weight=1)
 
@@ -594,7 +606,7 @@ class _DeliveryConfirmDialog:
 
         # --- Boutons ---
         btn_f = ttk.Frame(self._win, padding=(12, 0, 12, 10))
-        btn_f.grid(row=3, column=0, sticky="e")
+        btn_f.grid(row=4, column=0, sticky="e")
         self._btn_deliver = ttk.Button(btn_f, text="Livrer",
                                        command=self._deliver, state="disabled")
         self._btn_deliver.pack(side="left", padx=(0, 6))
@@ -660,7 +672,26 @@ class _DeliveryConfirmDialog:
                 self._queue.put(("log", f"  ✓ {self._json_fli_name}.json", "ok"))
             except Exception as exc:
                 self._queue.put(("log", f"  ✘ {self._json_fli_name}.json : {exc}", "error"))
-                ok = False
+                ok = False            # Fichier .info (properties)
+            info_name = f"{self._json_fli_name}.info"
+            info_path = os.path.join(out_dir, info_name)
+            try:
+                pdf_names = [
+                    f"{fli_id_str}.pdf"
+                    for fli_id_str in self._fli_ids.values()
+                ]
+                fli_pdf.generate_delivery_info(
+                    output_path=info_path,
+                    fli_id=context.get("fli_id", 0),
+                    context=context,
+                    repo_files=self._repo_files,
+                    pdf_names=pdf_names,
+                    json_name=f"{self._json_fli_name}.json",
+                    remarque=self._delivery.get("remarque", ""),
+                )
+                self._queue.put(("log", f"  ✓ {info_name}", "ok"))
+            except Exception as exc:
+                self._queue.put(("log", f"  ⚠ {info_name} : {exc}", "warn"))
             self._queue.put(("pdf_done", ok, out_dir))
 
         threading.Thread(target=run, daemon=True).start()
@@ -729,6 +760,9 @@ class _DeliveryConfirmDialog:
             json_path = os.path.join(out_dir, f"{self._json_fli_name}.json")
             if os.path.isfile(json_path):
                 pdf_paths.append(json_path)
+            info_path = os.path.join(out_dir, f"{self._json_fli_name}.info")
+            if os.path.isfile(info_path):
+                pdf_paths.append(info_path)
             if not pdf_paths:
                 return
             host = prefs_mod.get(self._prefs, "sftp", "host", default="").strip()
@@ -746,7 +780,7 @@ class _DeliveryConfirmDialog:
                 self._queue.put(("log", "✔ PDFs envoyés sur le SFTP.", "ok"))
             else:
                 self._queue.put(("log", "⚠ Envoi SFTP incomplet.", "warn"))
-
+            self._queue.put(("sftp_done", out_dir))
         threading.Thread(target=run_with_sftp, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -781,8 +815,14 @@ class _DeliveryConfirmDialog:
                     else:
                         self._append_log("⚠ Livraison terminée avec des erreurs.", "warn")
                     self._busy = False
-                    self._btn_deliver.config(state="normal")
+                    self._btn_deliver.config(state="normal")                    # Pas de SFTP configuré : sauvegarder le log maintenant
+                    host = prefs_mod.get(self._prefs, "sftp", "host", default="").strip()
+                    if not host:
+                        self._save_log(self._out_var.get().strip())
 
+                elif kind == "sftp_done":
+                    _, out_dir = item
+                    self._save_log(out_dir)
         except queue.Empty:
             pass
 
@@ -790,6 +830,36 @@ class _DeliveryConfirmDialog:
             self._win.after(50, self._poll)
 
     # ------------------------------------------------------------------
+
+    def _save_log(self, out_dir: str) -> None:
+        """Sauvegarde le contenu du journal dans un fichier .log et l'envoie sur SFTP."""
+        if not out_dir:
+            return
+        log_name = f"{self._json_fli_name}.log"
+        log_path = os.path.join(out_dir, log_name)
+        content = self._log_text.get("1.0", "end")
+        try:
+            with open(log_path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            self._append_log(f"  \u2713 Log sauvegardé : {log_name}", "ok")
+        except Exception as exc:
+            self._append_log(f"  \u26a0 Impossible de sauvegarder le log : {exc}", "warn")
+            return
+        # Upload SFTP du log
+        host = prefs_mod.get(self._prefs, "sftp", "host", default="").strip()
+        if not host:
+            return
+        def _upload() -> None:
+            ok = sftp_ops.upload_files_from_prefs(
+                prefs=self._prefs,
+                local_paths=[log_path],
+                on_progress=lambda msg: self._queue.put(("log", msg, "")),
+            )
+            if ok:
+                self._queue.put(("log", f"  \u2713 SFTP {log_name}", "ok"))
+            else:
+                self._queue.put(("log", f"  \u26a0 SFTP {log_name} incomplet", "warn"))
+        threading.Thread(target=_upload, daemon=True).start()
 
     def _on_close(self) -> None:
         prefs_mod.set_(self._prefs, "delivery_confirm_dialog", "geometry",

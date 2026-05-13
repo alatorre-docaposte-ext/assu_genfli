@@ -34,15 +34,17 @@ class PrefsDialog:
 
         self._win = tk.Toplevel(parent)
         self._win.title("Préférences")
-        self._win.resizable(True, False)
+        self._win.resizable(True, True)
         self._win.grab_set()
         self._win.transient(parent)
-        self._win.minsize(550, 0)
+        self._win.minsize(700, 500)
 
         # Restaurer la geometry sauvegardée
         saved_geom = prefs_mod.get(self._prefs, "prefs_dialog", "geometry", default="")
         if saved_geom:
             self._win.geometry(saved_geom)
+        else:
+            self._win.geometry("800x700")
 
         self._build()
         self._win.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -245,6 +247,7 @@ class PrefsDialog:
             ttk.Entry(dest, textvariable=var).grid(row=row, column=1, sticky="ew", pady=4)
 
         # --- (Numérotation FLI supprimée — saisie manuelle à l'écran 2) ---
+        # TO/CC mail : configurés par projet (boîte de dialogue Projet)
 
     # ------------------------------------------------------------------
     # Onglet SFTP

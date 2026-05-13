@@ -7,3 +7,4 @@ __pycache__
 list.csv
 seed_routing_rules.py
 example.json
+*.properties

@@ -504,6 +504,99 @@ def generate_delivery_json(
     _log.info("[fli_pdf] JSON livraison généré : %s", output_path)
 
 
+def _compute_trigramme(full_name: str) -> str:
+    """
+    Calcule le trigramme à partir du nom complet.
+    Règle : 1ère lettre du 1er mot + 1ère lettre du 2e mot + dernière lettre du dernier mot.
+    Ex : 'Alexis La Torre' → ALE  /  'Jean-Christophe Guiotte' → JGE
+    """
+    import unicodedata
+    def _ascii(s: str) -> str:
+        return unicodedata.normalize("NFD", s).encode("ascii", "ignore").decode().upper()
+    words = [w for w in full_name.strip().split() if w]
+    if not words:
+        return ""
+    if len(words) == 1:
+        w = _ascii(words[0])
+        return (w[0] + w[-2] + w[-1])[:3] if len(w) >= 3 else w
+    return _ascii(words[0])[0] + _ascii(words[1])[0] + _ascii(words[-1])[-1]
+
+
+def generate_delivery_info(
+    output_path: str,
+    fli_id: int,
+    context: dict,
+    repo_files: dict,
+    pdf_names: list[str],
+    json_name: str,
+    remarque: str = "",
+) -> None:
+    """
+    Génère le fichier .info (format properties) accompagnant la livraison.
+
+    :param pdf_names:  liste des noms de fichiers PDF (basename uniquement).
+    :param json_name:  nom du fichier JSON (basename uniquement).
+    """
+    code3       = context.get("project_code", "").upper()
+    fli_num_str = f"{fli_id:05d}"
+    livreur     = context.get("livreur", "")
+
+    objet  = f"[ASSU][{code3}][EXT] FLI LIV_{fli_num_str}"
+    trigram = _compute_trigramme(livreur)
+
+    # ENVIRONNEMENT_GIT : dépôts impliqués, RESS en premier, WFD en second
+    _REPO_DEPOT_KEY = {"WFD": "depot_wfd", "RESS": "depot_ress", "COMMUN": "depot_commun"}
+    env_git_parts = []
+    for repo in ("RESS", "WFD", "COMMUN"):
+        if repo in repo_files:
+            name = context.get(_REPO_DEPOT_KEY[repo], "")
+            if name:
+                env_git_parts.append(name)
+    env_git = ",".join(env_git_parts)
+
+    # PIECE_JOINTE
+    pieces = pdf_names + ([json_name] if json_name else [])
+    piece_jointe = ",".join(pieces)
+
+    # LISTE_VERSION_WFD
+    wfd_versions: list[str] = []
+    for repo in ("WFD", "BOTH"):
+        for files in repo_files.values():
+            for f in files:
+                if f.get("cible") not in ("WFD", "BOTH"):
+                    continue
+                dest = (f.get("dest_path") or f["path"]).replace("\\", "/")
+                stem = os.path.splitext(os.path.basename(dest))[0].upper()
+                ver_num = str(f.get("ver_num", "") or "").strip()
+                ver_maq = str(f.get("ver_maq", "") or "").strip()
+                if ver_num:
+                    try:
+                        ver_padded = f"{int(ver_num):05d}"
+                    except ValueError:
+                        ver_padded = ver_num.zfill(5)
+                    entry = f"TE_{stem}_{ver_maq}_{ver_padded}" if ver_maq else f"TE_{stem}_{ver_padded}"
+                    if entry not in wfd_versions:
+                        wfd_versions.append(entry)
+    liste_wfd = "|".join(wfd_versions)
+
+    lines = [
+        f"TO={context.get('mail_to', '')}",
+        f"CC={context.get('mail_cc', '')}",
+        f"OBJET={objet}",
+        f"ENVIRONNEMENT_GIT={env_git}",
+        f"ENVIRONNEMENT_LIVRAISON=intégration",
+        f"INFORMATION_DOC={remarque}",
+        f"PIECE_JOINTE={piece_jointe}",
+        f"TRIGRAMME={trigram}",
+        f"ENVIRONNEMENT_STOCKAGE=EXT_{code3}",
+        f"LISTE_VERSION_WFD={liste_wfd}",
+    ]
+
+    with open(output_path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+    _log.info("[fli_pdf] .info généré : %s", output_path)
+
+
 # ---------------------------------------------------------------------------
 # Context builder helper (called from screen3_delivery)
 # ---------------------------------------------------------------------------
@@ -546,4 +639,7 @@ def build_context(prefs: dict, delivery: dict) -> dict:
         "depot_commun":   _depot_name("depot_commun_distant"),
         "fli_id":         delivery.get("fli_id", 0),
         "quadient_r15":   delivery.get("quadient_r15", False),
+        "mail_to":        project.get("mail_to", "") or lv.get("mail", {}).get("to", ""),
+        "mail_cc":        project.get("mail_cc", "") or lv.get("mail", {}).get("cc", ""),
+        "project_code":   project.get("code", "").upper(),
     }

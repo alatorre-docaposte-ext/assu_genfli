@@ -25,6 +25,8 @@ _FIELDS = [
     ("depot_dev_distant",   "Dépôt DEV distant :",  "https://github.com/org/dev.git",   False),
     ("depot_commun_local",  "Dépôt COMMUN local :", "/chemin/du/dépôt/COMMUN",          True),
     ("depot_commun_distant","Dépôt COMMUN distant :","https://github.com/org/commun.git",False),
+    ("mail_to",             "TO (mail) :",           "destinataire@exemple.fr",           False),
+    ("mail_cc",             "CC (mail) :",           "copie@exemple.fr;autre@exemple.fr", False),
 ]
 
 
